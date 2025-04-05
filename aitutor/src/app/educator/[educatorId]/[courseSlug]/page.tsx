@@ -27,6 +27,9 @@ import {
   DialogClose,
 } from "@/components/ui/dialog"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 
 // Mock course data - in a real app, this would be fetched from Supabase
 const mockCourse = {
@@ -82,6 +85,19 @@ export default function CoursePage() {
   const [materialsDialogOpen, setMaterialsDialogOpen] = useState(false)
   const [currentAssignmentId, setCurrentAssignmentId] = useState<string | null>(null)
   const [selectedMaterials, setSelectedMaterials] = useState<string[]>([])
+  
+  // State for add material dialog
+  const [addMaterialDialogOpen, setAddMaterialDialogOpen] = useState(false)
+  const [newMaterial, setNewMaterial] = useState({ name: "", type: "resource" })
+  
+  // State for add assignment dialog
+  const [addAssignmentDialogOpen, setAddAssignmentDialogOpen] = useState(false)
+  const [newAssignment, setNewAssignment] = useState({
+    name: "",
+    description: "",
+    dueDate: "",
+    attachedMaterials: [] as string[]
+  })
 
   // Open materials dialog for an assignment
   const openMaterialsDialog = (assignmentId: string) => {
@@ -107,6 +123,51 @@ export default function CoursePage() {
     })
     
     setMaterialsDialogOpen(false)
+  }
+  
+  // Add new material
+  const handleAddMaterial = () => {
+    if (!course || !newMaterial.name) return
+    
+    const newId = `m${course.materials.length + 1}`
+    setCourse({
+      ...course,
+      materials: [
+        ...course.materials,
+        { id: newId, name: newMaterial.name, type: newMaterial.type }
+      ]
+    })
+    
+    setNewMaterial({ name: "", type: "resource" })
+    setAddMaterialDialogOpen(false)
+  }
+  
+  // Add new assignment
+  const handleAddAssignment = () => {
+    if (!course || !newAssignment.name || !newAssignment.dueDate) return
+    
+    const newId = `a${course.assignments.length + 1}`
+    setCourse({
+      ...course,
+      assignments: [
+        ...course.assignments,
+        { 
+          id: newId, 
+          name: newAssignment.name, 
+          description: newAssignment.description,
+          dueDate: newAssignment.dueDate,
+          attachedMaterials: newAssignment.attachedMaterials
+        }
+      ]
+    })
+    
+    setNewAssignment({
+      name: "",
+      description: "",
+      dueDate: "",
+      attachedMaterials: []
+    })
+    setAddAssignmentDialogOpen(false)
   }
   
   useEffect(() => {
@@ -206,7 +267,7 @@ export default function CoursePage() {
       <div>
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-2xl font-bold">Course Materials</h2>
-          <Button size="sm">
+          <Button size="sm" onClick={() => setAddMaterialDialogOpen(true)}>
             <PlusCircle className="mr-2 h-4 w-4" /> Add Material
           </Button>
         </div>
@@ -235,7 +296,7 @@ export default function CoursePage() {
       <div>
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-2xl font-bold">Assignments</h2>
-          <Button size="sm">
+          <Button size="sm" onClick={() => setAddAssignmentDialogOpen(true)}>
             <PlusCircle className="mr-2 h-4 w-4" /> Add Assignment
           </Button>
         </div>
@@ -336,6 +397,166 @@ export default function CoursePage() {
               </Button>
               <Button type="button" onClick={saveAttachedMaterials}>
                 Save Changes
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Add Material Dialog */}
+      <Dialog open={addMaterialDialogOpen} onOpenChange={setAddMaterialDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Add New Material</DialogTitle>
+            <DialogDescription>
+              Add a new material to your course. Students will be able to access this material.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-4 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="material-name">Material Name</Label>
+              <Input 
+                id="material-name" 
+                value={newMaterial.name}
+                onChange={(e) => setNewMaterial({...newMaterial, name: e.target.value})}
+                placeholder="e.g., Week 3: Algorithms"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="material-type">Material Type</Label>
+              <select 
+                id="material-type"
+                className="w-full p-2 border rounded-md"
+                value={newMaterial.type}
+                onChange={(e) => setNewMaterial({...newMaterial, type: e.target.value})}
+              >
+                <option value="textbook">Textbook</option>
+                <option value="slides">Slides</option>
+                <option value="pset">Problem Set</option>
+                <option value="resource">Resource</option>
+              </select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="material-file">Upload File (optional)</Label>
+              <Input id="material-file" type="file" />
+              <p className="text-xs text-gray-500">Max file size: 50MB</p>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <div className="flex justify-between w-full">
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={() => setAddMaterialDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="button" onClick={handleAddMaterial}>
+                Add Material
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Add Assignment Dialog */}
+      <Dialog open={addAssignmentDialogOpen} onOpenChange={setAddAssignmentDialogOpen}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Create New Assignment</DialogTitle>
+            <DialogDescription>
+              Create a new assignment for your students. You can attach course materials to help them complete the assignment.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-4 space-y-4 max-h-[70vh] overflow-y-auto">
+            <div className="space-y-2">
+              <Label htmlFor="assignment-name">Assignment Title</Label>
+              <Input 
+                id="assignment-name" 
+                value={newAssignment.name}
+                onChange={(e) => setNewAssignment({...newAssignment, name: e.target.value})}
+                placeholder="e.g., Midterm Project"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="assignment-description">Description</Label>
+              <Textarea 
+                id="assignment-description" 
+                value={newAssignment.description}
+                onChange={(e) => setNewAssignment({...newAssignment, description: e.target.value})}
+                placeholder="Describe the assignment requirements..."
+                rows={3}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="assignment-due-date">Due Date</Label>
+              <Input 
+                id="assignment-due-date" 
+                type="date"
+                value={newAssignment.dueDate}
+                onChange={(e) => setNewAssignment({...newAssignment, dueDate: e.target.value})}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Attach Materials</Label>
+              <div className="border rounded-md p-3 space-y-2 max-h-[200px] overflow-y-auto">
+                {course.materials.map((material) => (
+                  <div key={material.id} className="flex items-center space-x-3 px-2 py-1 rounded-lg hover:bg-gray-100">
+                    <Checkbox 
+                      id={`new-assignment-${material.id}`}
+                      checked={newAssignment.attachedMaterials.includes(material.id)}
+                      onCheckedChange={(checked: boolean | 'indeterminate') => {
+                        if (checked === true) {
+                          setNewAssignment({
+                            ...newAssignment, 
+                            attachedMaterials: [...newAssignment.attachedMaterials, material.id]
+                          });
+                        } else {
+                          setNewAssignment({
+                            ...newAssignment,
+                            attachedMaterials: newAssignment.attachedMaterials.filter(id => id !== material.id)
+                          });
+                        }
+                      }}
+                    />
+                    <div className="flex-1 flex items-center">
+                      <div className="mr-2">
+                        {getMaterialIcon(material.type)}
+                      </div>
+                      <label htmlFor={`new-assignment-${material.id}`} className="cursor-pointer flex-1 text-sm">
+                        <div className="font-medium">{material.name}</div>
+                        <div className="text-xs text-gray-500 capitalize">{material.type}</div>
+                      </label>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <div className="flex justify-between w-full">
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={() => setAddAssignmentDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button 
+                type="button" 
+                onClick={handleAddAssignment}
+                disabled={!newAssignment.name || !newAssignment.dueDate}
+              >
+                Create Assignment
               </Button>
             </div>
           </DialogFooter>
