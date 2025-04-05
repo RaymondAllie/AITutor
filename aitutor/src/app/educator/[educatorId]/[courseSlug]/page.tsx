@@ -5,7 +5,28 @@ import { useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { PlusCircle, Book, FileText, Calendar, HelpCircle, Download, MessageSquare } from "lucide-react"
+import { 
+  PlusCircle, 
+  Book, 
+  FileText, 
+  Calendar, 
+  HelpCircle, 
+  Download, 
+  MessageSquare,
+  X,
+  Check,
+  Paperclip
+} from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogClose,
+} from "@/components/ui/dialog"
+import { Checkbox } from "@/components/ui/checkbox"
 
 // Mock course data - in a real app, this would be fetched from Supabase
 const mockCourse = {
@@ -28,33 +49,21 @@ const mockCourse = {
       name: "Hello World Program", 
       dueDate: "2025-04-10",
       description: "Write a simple program that outputs 'Hello, World!' to the console.",
-      questions: [
-        { id: "q1", text: "What is the output of the program?" },
-        { id: "q2", text: "What is the main function of the program?" },
-        { id: "q3", text: "What is the purpose of the program?" },
-      ]
+      attachedMaterials: ["m2", "m6"] // IDs of attached materials
     },
     { 
       id: "a2", 
       name: "Basic Algorithms", 
       dueDate: "2025-04-24",
       description: "Implement three basic sorting algorithms and compare their performance.",
-      questions: [
-        { id: "q1", text: "What is the output of the program?" },
-        { id: "q2", text: "What is the main function of the program?" },
-        { id: "q3", text: "What is the purpose of the program?" },
-      ]
+      attachedMaterials: ["m3", "m4"]
     },
     { 
       id: "a3", 
       name: "Data Structures Implementation", 
       dueDate: "2025-05-08",
       description: "Implement linked lists and binary trees with basic operations.",
-      questions: [
-        { id: "q1", text: "What is the output of the program?" },
-        { id: "q2", text: "What is the main function of the program?" },
-        { id: "q3", text: "What is the purpose of the program?" },
-      ]
+      attachedMaterials: ["m3", "m5", "m6"]
     },
   ],
 }
@@ -68,6 +77,37 @@ export default function CoursePage() {
   const [loading, setLoading] = useState(true)
   const [showChatHelp, setShowChatHelp] = useState(false)
   const [chatMessage, setChatMessage] = useState("")
+  
+  // State for materials dialog
+  const [materialsDialogOpen, setMaterialsDialogOpen] = useState(false)
+  const [currentAssignmentId, setCurrentAssignmentId] = useState<string | null>(null)
+  const [selectedMaterials, setSelectedMaterials] = useState<string[]>([])
+
+  // Open materials dialog for an assignment
+  const openMaterialsDialog = (assignmentId: string) => {
+    const assignment = course?.assignments.find(a => a.id === assignmentId)
+    if (assignment) {
+      setCurrentAssignmentId(assignmentId)
+      setSelectedMaterials([...assignment.attachedMaterials])
+      setMaterialsDialogOpen(true)
+    }
+  }
+
+  // Save attached materials selection
+  const saveAttachedMaterials = () => {
+    if (!currentAssignmentId || !course) return
+
+    setCourse({
+      ...course,
+      assignments: course.assignments.map(assignment => 
+        assignment.id === currentAssignmentId 
+          ? { ...assignment, attachedMaterials: selectedMaterials }
+          : assignment
+      )
+    })
+    
+    setMaterialsDialogOpen(false)
+  }
   
   useEffect(() => {
     // Simulate fetching course data
@@ -174,7 +214,7 @@ export default function CoursePage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {course.materials.map((material) => (
             <Card key={material.id} className="overflow-hidden hover:shadow-md transition-shadow bg-gray-100">
-              <div className="flex px-4 items-center">
+              <div className="flex px-4 py-3 items-center">
                 <div className="mr-3 rounded-lg">
                   {getMaterialIcon(material.type)}
                 </div>
@@ -207,43 +247,100 @@ export default function CoursePage() {
                 <div className="flex justify-between items-start">
                   <CardTitle className="text-xl">{assignment.name}</CardTitle>
                   <div className="flex space-x-2">
-                    <Button size="sm" variant="outline" className="bg-gray-100 text-black hover:bg-gray-200">Edit Questions</Button>
-                    {/* <Button size="sm" variant="outline">Review Submissions</Button> */}
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => openMaterialsDialog(assignment.id)}
+                    >
+                      <Paperclip className="mr-1 h-4 w-4" /> 
+                      {assignment.attachedMaterials.length > 0 ? 
+                        `${assignment.attachedMaterials.length} Materials` : 
+                        "Attach Materials"
+                      }
+                    </Button>
                     <Button size="sm" variant="outline" className="bg-gray-100 text-black hover:bg-gray-200">View Chatbot Logs</Button>
                     <div className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium mr-2">
                       Due: {new Date(assignment.dueDate).toLocaleDateString()}
                     </div>
                   </div>
                 </div>
-                <p className="text-sm text-gray-600 mb-2">{assignment.questions.length || 0} questions</p>
+                {assignment.attachedMaterials.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {assignment.attachedMaterials.map(materialId => {
+                      const material = course.materials.find(m => m.id === materialId);
+                      if (!material) return null;
+                      return (
+                        <div key={materialId} className="flex items-center px-2 py-1 bg-gray-100 rounded-md text-xs">
+                          {getMaterialIcon(material.type)}
+                          <span className="ml-1">{material.name}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </CardHeader>
-              {/* <CardContent className="pb-4"> */}
-                {/* Insights Panel */}
-                {/* <div className=" bg-gray-50 p-4 rounded-lg space-y-3">
-                  
-                  <div className="flex justify-between">
-                    <div className="text-sm">
-                      <span className="font-medium">Most challenging question:</span> 
-                      <span className="ml-1 text-red-600">Question 3 (78% required help)</span>
-                    </div>
-                    <div className="text-sm font-medium text-blue-600">8 students engaged</div>
-                  </div>
-                  
-                  <div className="flex flex-col space-y-2 text-sm">
-                    <div>
-                      <span className="font-medium">Questions attempted:</span>
-                      <div className="w-full bg-gray-200 rounded-full h-2.5 mt-1">
-                        <div className="bg-blue-600 h-2.5 rounded-full" style={{ width: '85%' }}></div>
-                      </div>
-                    </div>
-                  </div>
-                </div> */}
-                
-              {/* </CardContent> */}
             </Card>
           ))}
         </div>
       </div>
+
+      {/* Materials Selection Dialog */}
+      <Dialog open={materialsDialogOpen} onOpenChange={setMaterialsDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Attach Materials to Assignment</DialogTitle>
+            <DialogDescription>
+              Select course materials to attach to this assignment. Students will have easy access to these materials when working on the assignment.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-4 max-h-[60vh] overflow-y-auto">
+            <div className="space-y-3">
+              {course.materials.map((material) => (
+                <div key={material.id} className="flex items-center space-x-3 px-4 py-2 rounded-lg hover:bg-gray-100">
+                  <Checkbox 
+                    id={material.id}
+                    checked={selectedMaterials.includes(material.id)}
+                    onCheckedChange={(checked: boolean | 'indeterminate') => {
+                      if (checked === true) {
+                        setSelectedMaterials(prev => [...prev, material.id]);
+                      } else {
+                        setSelectedMaterials(prev => 
+                          prev.filter(id => id !== material.id)
+                        );
+                      }
+                    }}
+                  />
+                  <div className="flex-1 flex items-center">
+                    <div className="mr-3">
+                      {getMaterialIcon(material.type)}
+                    </div>
+                    <label htmlFor={material.id} className="cursor-pointer flex-1">
+                      <div className="font-medium">{material.name}</div>
+                      <div className="text-sm text-gray-500 capitalize">{material.type}</div>
+                    </label>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <div className="flex justify-between w-full">
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={() => setMaterialsDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="button" onClick={saveAttachedMaterials}>
+                Save Changes
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 } 
