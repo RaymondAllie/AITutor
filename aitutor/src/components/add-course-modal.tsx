@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { PlusCircle, X, CheckCircle } from "lucide-react"
+import { PlusCircle, X, CheckCircle, AlertCircle } from "lucide-react"
 
 interface AddCourseModalProps {
   isOpen: boolean
@@ -215,7 +215,7 @@ export function AddCourseModal({ isOpen, onClose }: AddCourseModalProps) {
                   <select
                     value={material.type}
                     onChange={(e) => handleMaterialChange(index, "type", e.target.value as Material["type"])}
-                    className="border rounded p-2"
+                    className="border rounded p-2 text-sm font-normal text-gray-600"
                   >
                     <option value="textbook">Textbook</option>
                     <option value="powerpoint">PowerPoint</option>
@@ -240,35 +240,49 @@ export function AddCourseModal({ isOpen, onClose }: AddCourseModalProps) {
           
           {step === 3 && (
             <div className="grid gap-4 py-4 max-h-[300px] overflow-y-auto">
-              {assignments.map((assignment, index) => (
-                <div key={index} className="grid grid-cols-1 gap-3 p-3 border rounded">
-                  <div className="flex items-center gap-2">
-                    <Input
-                      value={assignment.name}
-                      onChange={(e) => handleAssignmentChange(index, "name", e.target.value)}
-                      placeholder="Assignment name"
-                      className="flex-grow"
-                    />
-                    <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveAssignment(index)}>
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <Input
-                    type="date"
-                    value={assignment.dueDate || ""}
-                    onChange={(e) => handleAssignmentChange(index, "dueDate", e.target.value)}
-                    placeholder="Due date"
-                  />
-                  <Input
-                    value={assignment.description || ""}
-                    onChange={(e) => handleAssignmentChange(index, "description", e.target.value)}
-                    placeholder="Assignment description"
-                  />
+              {assignments.length === 0 ? (
+                <div className="text-center p-6 border border-dashed rounded-md">
+                  <p className="text-gray-500 mb-2">No assignments added yet.</p>
+                  <p className="text-gray-500 text-sm">You must add at least one assignment before creating the course.</p>
                 </div>
-              ))}
+              ) : (
+                assignments.map((assignment, index) => (
+                  <div key={index} className="grid grid-cols-1 gap-3 p-3 border rounded">
+                    <div className="flex items-center gap-2">
+                      <Input
+                        value={assignment.name}
+                        onChange={(e) => handleAssignmentChange(index, "name", e.target.value)}
+                        placeholder="Assignment name"
+                        className="flex-grow"
+                      />
+                      <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveAssignment(index)}>
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <Input
+                      type="date"
+                      value={assignment.dueDate || ""}
+                      onChange={(e) => handleAssignmentChange(index, "dueDate", e.target.value)}
+                      placeholder="Due date"
+                    />
+                    <Input
+                      value={assignment.description || ""}
+                      onChange={(e) => handleAssignmentChange(index, "description", e.target.value)}
+                      placeholder="Assignment description"
+                    />
+                  </div>
+                ))
+              )}
               <Button type="button" onClick={handleAddAssignment} variant="outline">
                 <PlusCircle className="mr-2 h-4 w-4" /> Add Assignment
               </Button>
+            </div>
+          )}
+          
+          {assignments.length === 0 && step === 3 && (
+            <div className="flex items-center p-3 text-sm text-amber-600 bg-amber-50 rounded-md mt-2">
+              <AlertCircle className="h-4 w-4 mr-2" />
+              Please add at least one assignment before creating the course.
             </div>
           )}
           
@@ -310,7 +324,7 @@ export function AddCourseModal({ isOpen, onClose }: AddCourseModalProps) {
                   Next
                 </Button>
               ) : (
-                <Button type="submit">Create Course</Button>
+                <Button type="submit" disabled={assignments.length === 0}>Create Course</Button>
               )}
             </DialogFooter>
           )}
