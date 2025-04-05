@@ -43,7 +43,7 @@ export default function StudentLogin() {
           <div className="hidden md:flex space-x-6 text-gray-600 dark:text-gray-300">
             <Link href="/product" className="hover:text-blue-600 transition-colors">Product</Link>
             <Link href="/pricing" className="hover:text-blue-600 transition-colors">Pricing</Link>
-            <Link href="https://cal.com/babeledu" className="hover:text-blue-600 transition-colors">Book a demo</Link>
+            <Link href="/demo" className="hover:text-blue-600 transition-colors">Book a demo</Link>
           </div>
           <div className="flex space-x-4">
             <Link href="/educator/login">

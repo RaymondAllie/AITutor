@@ -218,14 +218,14 @@ export default function StudentCoursePage() {
       {/* AI Tutor Section */}
       <div>
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold">AI Tutor</h2>
+          <h2 className="text-2xl font-bold">Babel</h2>
         </div>
         
         <Card className="border border-gray-300">
           <CardHeader>
             <CardTitle>Need help with your coursework?</CardTitle>
             <CardDescription>
-              Your AI tutor can help you understand concepts, work through problems, and prepare for exams.
+              Babel can help you understand concepts, work through problems, and prepare for exams.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -236,7 +236,7 @@ export default function StudentCoursePage() {
             
             {showChatHelp && (
               <div className="mt-4 border rounded-lg p-4">
-                <h3 className="font-medium mb-2">Ask your AI tutor a question</h3>
+                <h3 className="font-medium mb-2">Ask Babel a question</h3>
                 <form onSubmit={handleChatSubmit} className="space-y-4">
                   <textarea
                     className="w-full p-2 border rounded-md"

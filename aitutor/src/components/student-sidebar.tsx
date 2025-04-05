@@ -50,7 +50,7 @@ export function StudentSidebar() {
       <SidebarHeader>
         <div className="flex items-center space-x-2 px-4 py-3">
           <GraduationCap className="h-6 w-6" />
-          <span className="font-bold">AI Tutor</span>
+          <span className="font-bold">Babel</span>
         </div>
       </SidebarHeader>
       <SidebarContent>

@@ -20,7 +20,7 @@ export default function Home() {
           <div className="hidden md:flex space-x-6 text-gray-600 dark:text-gray-300">
             <Link href="/product" className="hover:text-blue-600 transition-colors">Product</Link>
             <Link href="/pricing" className="hover:text-blue-600 transition-colors">Pricing</Link>
-            <Link href="https://cal.com/babeledu" className="hover:text-blue-600 transition-colors">Book a demo</Link>
+            <Link href="/demo" className="hover:text-blue-600 transition-colors">Book a demo</Link>
           </div>
           <div className="flex space-x-4">
             <Link href="/educator/login">
@@ -181,7 +181,7 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="w-full py-12 px-4 sm:px-6 lg:px-8 bg-gray-100 dark:bg-gray-900">
-        <div className="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8">
+        <div className="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-3 gap-8">
           <div>
             <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Product</h3>
             <ul className="space-y-2">
@@ -192,7 +192,7 @@ export default function Home() {
             </ul>
           </div>
           
-          <div>
+          {/* <div>
             <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Resources</h3>
             <ul className="space-y-2">
               <li><Link href="#" className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white">Blog</Link></li>
@@ -200,7 +200,7 @@ export default function Home() {
               <li><Link href="#" className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white">Webinars</Link></li>
               <li><Link href="#" className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white">Help Center</Link></li>
             </ul>
-          </div>
+          </div> */}
           
           <div>
             <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Use Cases</h3>
@@ -223,9 +223,9 @@ export default function Home() {
           </div>
         </div>
         
-        <div className="mt-12 border-t border-gray-200 dark:border-gray-700 pt-8 flex flex-col md:flex-row justify-between items-center">
-          <p className="text-gray-500 dark:text-gray-400">© 2025 AI Tutor, Inc. All rights reserved.</p>
-          <div className="flex space-x-6 mt-4 md:mt-0">
+        <div className="mt-12 border-t border-gray-200 dark:border-gray-700 pt-8 flex flex-col md:flex-row justify-between items-center max-w-7xl mx-auto">
+          <p className="text-gray-500 dark:text-gray-400">© 2025 Babel Corporation. All rights reserved.</p>
+          {/* <div className="flex space-x-6 mt-4 md:mt-0">
             <Link href="#" className="text-gray-400 hover:text-gray-500">
               <span className="sr-only">Twitter</span>
               <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -238,7 +238,7 @@ export default function Home() {
                 <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z" />
               </svg>
             </Link>
-          </div>
+          </div> */}
         </div>
       </footer>
     </div>
