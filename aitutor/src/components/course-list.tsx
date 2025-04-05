@@ -65,31 +65,25 @@ export function CourseList() {
                 <CardDescription>{course.code}</CardDescription>
               </CardHeader>
               
-              <CardContent className="pt-0">
-                <p className="mb-4 text-sm text-gray-500 line-clamp-2">{course.description}</p>
-                
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div className="flex items-center">
+              <CardContent className="pt-0">                
+                <div className="grid grid-cols-12 gap-2 text-sm">
+                  <div className="col-span-5 flex items-center">
                     <Users className="mr-2 h-4 w-4 text-gray-400" />
-                    <span>{course.students} Students</span>
+                    <span className="truncate">{course.students} Students</span>
                   </div>
-                  <div className="flex items-center">
+                  <div className="col-span-5 flex items-center">
                     <FileText className="mr-2 h-4 w-4 text-gray-400" />
-                    <span>{course.assignments} Assignments</span>
+                    <span className="truncate">{course.assignments} Assignments</span>
+                  </div>
+                  <div className="col-span-2 flex justify-end">
+                    <Button variant="ghost" size="icon">
+                      <ExternalLink className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
+                
               </CardContent>
-              
-              <CardFooter className="px-5 pt-0 flex justify-between">
-                <Button variant="outline" size="sm">
-                  <BookOpen className="mr-2 h-4 w-4" />
-                  View Course
-                </Button>
-                <Button variant="ghost" size="icon">
-                  <ExternalLink className="h-4 w-4" />
-                </Button>
-              </CardFooter>
-            </Card>
+                          </Card>
           </Link>
         )
       })}

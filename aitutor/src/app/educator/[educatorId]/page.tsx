@@ -22,7 +22,7 @@ export default function Educator() {
           </p>
         </div>
         <Button onClick={() => setIsAddCourseModalOpen(true)}>
-          <PlusCircle className="mr-2 h-4 w-4" /> Add Course
+          <PlusCircle className="mr-2 h-4 w-4" /> Create Course
         </Button>
       </div>
 
