@@ -17,7 +17,7 @@ import {
   navigationMenuTriggerStyle,
 } from "@/components/ui/navigation-menu"
 import { cn } from "@/lib/utils"
-import { BookOpen, GraduationCap, Calendar, Bell, Settings, Users, LayoutDashboard, ChevronDown, ChevronRight, LogOut, ChevronUp } from "lucide-react"
+import { BookOpen, Calendar, Bell, Settings, Users, LayoutDashboard, ChevronDown, ChevronRight, LogOut, ChevronUp } from "lucide-react"
 import {
   Sidebar,
   SidebarContent,
@@ -26,6 +26,7 @@ import {
   SidebarHeader,
 } from "@/components/ui/sidebar"
 import { AddCourseModal } from "./add-course-modal"
+import Image from "next/image"
 
 // Mock data for courses - in a real app, this would be fetched from a database
 const courses = [
@@ -70,9 +71,17 @@ export function AppSidebar() {
     <Sidebar>
       <SidebarHeader>
         <div className="flex items-center space-x-2 px-4 py-3">
-          <GraduationCap className="h-6 w-6" />
-          <span className="font-bold">Babel</span>
-        </div>
+        <Link href="/" className="flex items-center">
+            <Image 
+              src="/goldenratio.png" 
+              alt="Golden Ratio Logo" 
+              width={30} 
+              height={30} 
+              className="mr-2"
+            />
+            <span className="text-2xl font-semibold text-black-600">Babel</span>
+          </Link>        
+          </div>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
