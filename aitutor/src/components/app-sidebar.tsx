@@ -27,6 +27,8 @@ import {
 } from "@/components/ui/sidebar"
 import { AddCourseModal } from "./add-course-modal"
 import Image from "next/image"
+import { supabase } from "@/lib/supabase"
+import { toast } from "sonner"
 
 // Mock data for courses - in a real app, this would be fetched from a database
 const courses = [
@@ -57,6 +59,7 @@ const courses = [
 ]
 
 export function AppSidebar() {
+  const router = useRouter()
   const pathname = usePathname()
   const educatorId = "teacher123" // In a real app, this would come from auth
   const [coursesExpanded, setCoursesExpanded] = useState(true)
@@ -65,6 +68,20 @@ export function AppSidebar() {
   
   const isActive = (path: string) => {
     return pathname?.startsWith(path)
+  }
+  
+  const handleSignOut = async () => {
+    try {
+      const { error } = await supabase.auth.signOut()
+      if (error) {
+        throw error
+      }
+      toast.success("Signed out successfully")
+      router.push("/")
+    } catch (err: any) {
+      console.error("Error signing out:", err)
+      toast.error(err.message || "Failed to sign out. Please try again.")
+    }
   }
   
   return (
@@ -168,7 +185,7 @@ export function AppSidebar() {
                   </Link>
                   <button 
                     className="w-full flex items-center px-2 py-1.5 text-sm rounded-md hover:bg-accent text-red-500"
-                    onClick={() => console.log('Logout clicked')}
+                    onClick={handleSignOut}
                   >
                     <LogOut className="mr-2 h-4 w-4" />
                     Logout

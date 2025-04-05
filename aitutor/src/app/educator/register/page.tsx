@@ -217,11 +217,11 @@ export default function EducatorRegister() {
                 </div>
                 
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
+                  <Label htmlFor="email">Institutional Email</Label>
                   <Input 
                     id="email" 
                     type="email" 
-                    placeholder="you@example.com" 
+                    placeholder="you@university.edu" 
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
