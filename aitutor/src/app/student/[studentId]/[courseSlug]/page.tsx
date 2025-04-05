@@ -3,9 +3,11 @@
 import { useState, useEffect } from "react"
 import { useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { PlusCircle, Book, FileText, Calendar, HelpCircle, Download, MessageSquare } from "lucide-react"
+import { PlusCircle, Book, FileText, Calendar, HelpCircle, Download, MessageSquare, CheckCircle, Clock } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import Link from "next/link"
 
 // Mock course data - in a real app, this would be fetched from Supabase
 const mockCourse = {
@@ -28,10 +30,13 @@ const mockCourse = {
       name: "Hello World Program", 
       dueDate: "2025-04-10",
       description: "Write a simple program that outputs 'Hello, World!' to the console.",
+      status: "completed",
+      completedQuestions: 3,
+      totalQuestions: 3,
       questions: [
-        { id: "q1", text: "What is the output of the program?" },
-        { id: "q2", text: "What is the main function of the program?" },
-        { id: "q3", text: "What is the purpose of the program?" },
+        { id: "q1", text: "What is the output of the program?", completed: true },
+        { id: "q2", text: "What is the main function of the program?", completed: true },
+        { id: "q3", text: "What is the purpose of the program?", completed: true },
       ]
     },
     { 
@@ -39,10 +44,13 @@ const mockCourse = {
       name: "Basic Algorithms", 
       dueDate: "2025-04-24",
       description: "Implement three basic sorting algorithms and compare their performance.",
+      status: "pending",
+      completedQuestions: 1,
+      totalQuestions: 3,
       questions: [
-        { id: "q1", text: "What is the output of the program?" },
-        { id: "q2", text: "What is the main function of the program?" },
-        { id: "q3", text: "What is the purpose of the program?" },
+        { id: "q1", text: "What is the output of the program?", completed: true },
+        { id: "q2", text: "What is the main function of the program?", completed: false },
+        { id: "q3", text: "What is the purpose of the program?", completed: false },
       ]
     },
     { 
@@ -50,10 +58,13 @@ const mockCourse = {
       name: "Data Structures Implementation", 
       dueDate: "2025-05-08",
       description: "Implement linked lists and binary trees with basic operations.",
+      status: "upcoming",
+      completedQuestions: 0,
+      totalQuestions: 3,
       questions: [
-        { id: "q1", text: "What is the output of the program?" },
-        { id: "q2", text: "What is the main function of the program?" },
-        { id: "q3", text: "What is the purpose of the program?" },
+        { id: "q1", text: "What is the output of the program?", completed: false },
+        { id: "q2", text: "What is the main function of the program?", completed: false },
+        { id: "q3", text: "What is the purpose of the program?", completed: false },
       ]
     },
   ],
@@ -194,34 +205,211 @@ export default function StudentCoursePage() {
           <h2 className="text-2xl font-bold">Assignments</h2>
         </div>
         
-        <div className="space-y-4">
-          {sortedAssignments.map((assignment) => (
-            <Card key={assignment.id} className="overflow-hidden border border-gray-300">
-              <CardHeader className="">
-                <div className="flex justify-between items-start">
-                  <CardTitle className="text-xl">{assignment.name}</CardTitle>
-                  <div className="flex space-x-2">
-                    <Button size="sm" variant="outline" className="bg-gray-100 text-black hover:bg-gray-200">View Assignment</Button>
-                    <Button size="sm" variant="outline" className="bg-gray-100 text-black hover:bg-gray-200">Get Help</Button>
-                    <div className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium mr-2">
-                      Due: {new Date(assignment.dueDate).toLocaleDateString()}
+        <Tabs defaultValue="item-1" className="space-y-4">
+          <TabsList className="grid w-full grid-cols-3 max-w-md mx-auto">
+            <TabsTrigger value="item-1" className="text-xs py-1">All</TabsTrigger>
+            <TabsTrigger value="item-2" className="text-xs py-1">Completed</TabsTrigger>
+            <TabsTrigger value="item-3" className="text-xs py-1">Pending</TabsTrigger>
+          </TabsList>
+          <TabsContent value="item-1" className="space-y-4">
+            <h2 className="text-xl font-semibold mb-4">All Assignments</h2>
+            <div className="grid gap-4">
+              {course.assignments.map((assignment) => (
+                <Card key={assignment.id}>
+                  <CardHeader className="pb-2">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <CardTitle className="text-base">{assignment.name}</CardTitle>
+                        <CardDescription>Due: {assignment.dueDate}</CardDescription>
+                      </div>
+                      <div className="text-xs font-medium px-2 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                        {new Date(assignment.dueDate).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric'
+                        })}
+                      </div>
                     </div>
-                  </div>
-                </div>
-                <p className="text-sm text-gray-600 mb-2">{assignment.questions.length || 0} questions</p>
-              </CardHeader>
-            </Card>
-          ))}
-        </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm flex items-center gap-1">
+                        {assignment.status === "completed" ? (
+                          <CheckCircle className="h-4 w-4 text-emerald-600" />
+                        ) : (
+                          <Clock className="h-4 w-4 text-amber-500" />
+                        )}
+                        <span className={
+                          assignment.status === "completed" 
+                            ? "text-emerald-600" 
+                            : assignment.completedQuestions > 0 
+                              ? "text-amber-600" 
+                              : "text-gray-600"
+                        }>
+                          {assignment.completedQuestions}/{assignment.totalQuestions} questions completed
+                        </span>
+                      </div>
+                      <span className="text-xs text-gray-500">
+                        {assignment.questions.length} {assignment.questions.length === 1 ? 'question' : 'questions'}
+                      </span>
+                    </div>
+                    {/* Add progress bar */}
+                    <div className="w-full bg-gray-200 rounded-full h-1.5 mt-2">
+                      <div 
+                        className={`h-1.5 rounded-full ${
+                          assignment.status === "completed" 
+                            ? "bg-emerald-500" 
+                            : assignment.completedQuestions > 0 
+                              ? "bg-amber-500" 
+                              : "bg-blue-500"
+                        }`} 
+                        style={{ width: `${(assignment.completedQuestions / assignment.totalQuestions) * 100}%` }}
+                      ></div>
+                    </div>
+                  </CardContent>
+                  <CardFooter>
+                    <Button 
+                      className="text-xs py-1 h-8 px-3"
+                      variant={assignment.status === "completed" ? "outline" : "default"}
+                      asChild
+                    >
+                      <Link href={`/student/${studentId}/${courseSlug}/${assignment.name.toLowerCase().replace(/\s+/g, '-')}`}>
+                        {assignment.status === "completed" 
+                          ? "Review Assignment" 
+                          : assignment.status === "pending" 
+                            ? "Continue Assignment" 
+                            : "Start Assignment"}
+                      </Link>
+                    </Button>
+                  </CardFooter>
+                </Card>
+              ))}
+            </div>
+          </TabsContent>
+          <TabsContent value="item-2" className="space-y-4">
+            <h2 className="text-xl font-semibold mb-4">Completed Assignments</h2>
+            {course.assignments.filter(a => a.status === "completed").length > 0 ? (
+              <div className="grid gap-4">
+                {course.assignments
+                  .filter(assignment => assignment.status === "completed")
+                  .map((assignment) => (
+                    <Card key={assignment.id}>
+                      <CardHeader className="pb-2">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <CardTitle className="text-base">{assignment.name}</CardTitle>
+                            <CardDescription>Due: {assignment.dueDate}</CardDescription>
+                          </div>
+                          <div className="text-xs font-medium px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            {new Date(assignment.dueDate).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric'
+                            })}
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="flex items-center justify-between">
+                          <div className="text-sm flex items-center gap-1">
+                            <CheckCircle className="h-4 w-4 text-emerald-600" />
+                            <span className="text-emerald-600">
+                              {assignment.completedQuestions}/{assignment.totalQuestions} questions completed
+                            </span>
+                          </div>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-1.5 mt-2">
+                          <div 
+                            className="bg-emerald-500 h-1.5 rounded-full" 
+                            style={{ width: `${(assignment.completedQuestions / assignment.totalQuestions) * 100}%` }}
+                          ></div>
+                        </div>
+                      </CardContent>
+                      <CardFooter>
+                        <Button 
+                          className="text-xs py-1 h-8 px-3"
+                          variant="outline"
+                          asChild
+                        >
+                          <Link href={`/student/${studentId}/${courseSlug}/${assignment.name.toLowerCase().replace(/\s+/g, '-')}`}>
+                            Review Assignment
+                          </Link>
+                        </Button>
+                      </CardFooter>
+                    </Card>
+                  ))}
+              </div>
+            ) : (
+              <div className="text-center p-6 border border-dashed rounded-md">
+                <p className="text-gray-500">No completed assignments yet.</p>
+              </div>
+            )}
+          </TabsContent>
+          <TabsContent value="item-3" className="space-y-4">
+            <h2 className="text-xl font-semibold mb-4">Pending Assignments</h2>
+            {course.assignments.filter(a => a.status === "pending" || a.status === "upcoming").length > 0 ? (
+              <div className="grid gap-4">
+                {course.assignments
+                  .filter(assignment => assignment.status === "pending" || assignment.status === "upcoming")
+                  .map((assignment) => (
+                    <Card key={assignment.id}>
+                      <CardHeader className="pb-2">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <CardTitle className="text-base">{assignment.name}</CardTitle>
+                            <CardDescription>Due: {assignment.dueDate}</CardDescription>
+                          </div>
+                          <div className="text-xs font-medium px-2 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                            {new Date(assignment.dueDate).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric'
+                            })}
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="flex items-center justify-between">
+                          <div className="text-sm flex items-center gap-1">
+                            <Clock className="h-4 w-4 text-amber-500" />
+                            <span className={assignment.status === "pending" ? "text-amber-600" : "text-gray-600"}>
+                              {assignment.completedQuestions}/{assignment.totalQuestions} questions completed
+                            </span>
+                          </div>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-1.5 mt-2">
+                          <div 
+                            className={assignment.status === "pending" ? "bg-amber-500 h-1.5 rounded-full" : "bg-blue-500 h-1.5 rounded-full"}
+                            style={{ width: `${(assignment.completedQuestions / assignment.totalQuestions) * 100}%` }}
+                          ></div>
+                        </div>
+                      </CardContent>
+                      <CardFooter>
+                        <Button 
+                          className="text-xs py-1 h-8 px-3"
+                          asChild
+                        >
+                          <Link href={`/student/${studentId}/${courseSlug}/${assignment.name.toLowerCase().replace(/\s+/g, '-')}`}>
+                            {assignment.status === "pending" ? "Continue Assignment" : "Start Assignment"}
+                          </Link>
+                        </Button>
+                      </CardFooter>
+                    </Card>
+                  ))}
+              </div>
+            ) : (
+              <div className="text-center p-6 border border-dashed rounded-md">
+                <p className="text-gray-500">No pending assignments.</p>
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
       </div>
       
       {/* AI Tutor Section */}
       <div>
-        <div className="flex justify-between items-center mb-4">
+        {/* <div className="flex justify-between items-center mb-4">
           <h2 className="text-2xl font-bold">Babel</h2>
         </div>
         
-        <Card className="border border-gray-300">
+        <Card className="border-2 border-blue-200 shadow-sm">
           <CardHeader>
             <CardTitle>Need help with your coursework?</CardTitle>
             <CardDescription>
@@ -229,7 +417,7 @@ export default function StudentCoursePage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button onClick={() => setShowChatHelp(!showChatHelp)} className="w-full">
+            <Button onClick={() => setShowChatHelp(!showChatHelp)} className="w-full bg-blue-600 hover:bg-blue-700">
               <MessageSquare className="mr-2 h-4 w-4" />
               Start a Tutoring Session
             </Button>
@@ -252,7 +440,7 @@ export default function StudentCoursePage() {
               </div>
             )}
           </CardContent>
-        </Card>
+        </Card> */}
       </div>
     </div>
   )
