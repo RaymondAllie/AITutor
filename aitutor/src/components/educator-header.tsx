@@ -68,10 +68,10 @@ export function EducatorHeader() {
         <NavigationMenu className="mx-6">
           <NavigationMenuList>
             <NavigationMenuItem>
-              <Link href={`/educator`} legacyBehavior passHref>
+              <Link href={`/educator/${educatorId}`} legacyBehavior passHref>
                 <NavigationMenuLink className={cn(
                   navigationMenuTriggerStyle(),
-                  isActive("/educator") && !isActive(`/educator/${educatorId}`) ? "bg-accent text-accent-foreground" : ""
+                  isActive(`/educator/${educatorId}`) ? "bg-accent text-accent-foreground" : ""
                 )}>
                   <LayoutDashboard className="mr-2 h-4 w-4" />
                   Dashboard
