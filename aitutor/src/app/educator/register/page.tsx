@@ -55,6 +55,19 @@ export default function EducatorRegister() {
       }
       
       if (data?.user) {
+        // Store user in the users table with role=educator
+        const { error: insertError } = await supabase
+          .from('users')
+          .upsert({
+            id: data.user.id,
+            role: 'educator',
+            name: name,
+          }, { onConflict: 'id' });
+        
+        if (insertError) {
+          console.error("Error storing user data:", insertError);
+        }
+        
         // Create an educator profile in your database
         const { error: profileError } = await supabase
           .from('educator_profiles')

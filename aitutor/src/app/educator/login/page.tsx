@@ -36,8 +36,7 @@ export default function EducatorLogin() {
       }
       
       if (data?.user) {
-        // Store user type (educator) in custom metadata or separate table if needed
-        // For now, we'll just navigate to the educator dashboard
+        // Navigate to the educator dashboard
         router.push(`/educator/${data.user.id}`);
       }
     } catch (err: any) {
