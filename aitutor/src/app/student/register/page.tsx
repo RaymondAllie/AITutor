@@ -11,24 +11,43 @@ import { ArrowLeft } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
-export default function StudentLogin() {
+export default function StudentRegister() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [rememberMe, setRememberMe] = useState(false);
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
-  const handleEmailLogin = async (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validation
+    if (password !== confirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
+    
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters");
+      return;
+    }
+    
     setLoading(true);
     setError(null);
     
     try {
-      // Sign in with email and password
-      const { data, error } = await supabase.auth.signInWithPassword({
+      // Sign up with email and password
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
+        options: {
+          data: {
+            full_name: name,
+            user_type: 'student',
+          }
+        }
       });
 
       if (error) {
@@ -36,28 +55,50 @@ export default function StudentLogin() {
       }
       
       if (data?.user) {
-        // Store user type (student) in custom metadata or separate table if needed
-        // For now, we'll just navigate to the student dashboard
-        router.push(`/student/${data.user.id}`);
+        // Create a student profile in your database
+        const { error: profileError } = await supabase
+          .from('student_profiles')
+          .insert([
+            { 
+              user_id: data.user.id,
+              name,
+              email
+            }
+          ]);
+          
+        if (profileError) {
+          console.error("Error creating student profile:", profileError);
+        }
+        
+        // Check if email confirmation is required
+        if (data?.user?.identities?.length === 0) {
+          router.push("/student/register/confirmation");
+        } else {
+          router.push(`/student/${data.user.id}`);
+        }
       }
     } catch (err: any) {
-      console.error("Login error:", err);
-      setError(err.message || "Failed to sign in. Please check your credentials.");
+      console.error("Registration error:", err);
+      setError(err.message || "Failed to register. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleGoogleLogin = async () => {
+  const handleGoogleSignUp = async () => {
     setLoading(true);
     setError(null);
     
     try {
-      // Sign in with Google OAuth
+      // Sign up with Google OAuth
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: `${window.location.origin}/auth/callback?userType=student`,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          }
         }
       });
 
@@ -67,8 +108,8 @@ export default function StudentLogin() {
       
       // The redirect happens automatically, no need to handle navigation here
     } catch (err: any) {
-      console.error("Google login error:", err);
-      setError(err.message || "Failed to sign in with Google. Please try again.");
+      console.error("Google sign up error:", err);
+      setError(err.message || "Failed to sign up with Google. Please try again.");
       setLoading(false);
     }
   };
@@ -104,7 +145,7 @@ export default function StudentLogin() {
         </div>
       </nav>
 
-      {/* Login Form */}
+      {/* Registration Form */}
       <div className="flex-1 flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8">
         <div className="w-full max-w-md">
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-8">
@@ -114,10 +155,10 @@ export default function StudentLogin() {
                 Back to home
               </Link>
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-                Sign in to your student account
+                Create your student account
               </h2>
               <p className="text-gray-600 dark:text-gray-400">
-                Welcome back! Please sign in to access your courses.
+                Join Babel to access your courses and learn with AI assistance.
               </p>
             </div>
 
@@ -131,7 +172,7 @@ export default function StudentLogin() {
               <Button 
                 variant="outline" 
                 className="w-full flex items-center justify-center gap-2 py-5 border-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
-                onClick={handleGoogleLogin}
+                onClick={handleGoogleSignUp}
                 disabled={loading}
               >
                 {loading ? (
@@ -139,7 +180,7 @@ export default function StudentLogin() {
                 ) : (
                   <Image src="/Google__G__logo.svg" alt="Google" width={20} height={20} />
                 )}
-                <span>Sign in with Google</span>
+                <span>Sign up with Google</span>
               </Button>
 
               <div className="flex items-center">
@@ -148,7 +189,20 @@ export default function StudentLogin() {
                 <Separator className="flex-1" />
               </div>
 
-              <form onSubmit={handleEmailLogin} className="space-y-4">
+              <form onSubmit={handleRegister} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Full Name</Label>
+                  <Input 
+                    id="name" 
+                    type="text" 
+                    placeholder="John Doe" 
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                    disabled={loading}
+                  />
+                </div>
+                
                 <div className="space-y-2">
                   <Label htmlFor="email">Email</Label>
                   <Input 
@@ -163,12 +217,7 @@ export default function StudentLogin() {
                 </div>
 
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="password">Password</Label>
-                    <Link href="/student/forgot-password" className="text-sm text-blue-600 hover:underline">
-                      Forgot password?
-                    </Link>
-                  </div>
+                  <Label htmlFor="password">Password</Label>
                   <Input 
                     id="password" 
                     type="password" 
@@ -179,20 +228,18 @@ export default function StudentLogin() {
                     disabled={loading}
                   />
                 </div>
-
-                <div className="flex items-center">
-                  <input
-                    id="remember-me"
-                    name="remember-me"
-                    type="checkbox"
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                    checked={rememberMe}
-                    onChange={(e) => setRememberMe(e.target.checked)}
+                
+                <div className="space-y-2">
+                  <Label htmlFor="confirmPassword">Confirm Password</Label>
+                  <Input 
+                    id="confirmPassword" 
+                    type="password" 
+                    placeholder="••••••••" 
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
                     disabled={loading}
                   />
-                  <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-600 dark:text-gray-400">
-                    Remember me
-                  </label>
                 </div>
 
                 <Button 
@@ -200,16 +247,16 @@ export default function StudentLogin() {
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white py-5"
                   disabled={loading}
                 >
-                  {loading ? "Signing in..." : "Sign in"}
+                  {loading ? "Creating account..." : "Create account"}
                 </Button>
               </form>
             </div>
 
             <div className="mt-6 text-center">
               <p className="text-sm text-gray-600 dark:text-gray-400">
-                Don't have an account?{" "}
-                <Link href="/student/register" className="text-blue-600 hover:underline">
-                  Create one
+                Already have an account?{" "}
+                <Link href="/student/login" className="text-blue-600 hover:underline">
+                  Sign in
                 </Link>
               </p>
             </div>
@@ -227,4 +274,4 @@ export default function StudentLogin() {
       </footer>
     </div>
   );
-}
+} 

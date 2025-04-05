@@ -8,21 +8,69 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { ArrowLeft } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 
 export default function EducatorLogin() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
 
-  const handleEmailLogin = (e: React.FormEvent) => {
+  const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    // This would connect to your auth system in a real application
-    console.log("Logging in with email:", email, password);
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // Sign in with email and password
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        throw error;
+      }
+      
+      if (data?.user) {
+        // Store user type (educator) in custom metadata or separate table if needed
+        // For now, we'll just navigate to the educator dashboard
+        router.push(`/educator/${data.user.id}`);
+      }
+    } catch (err: any) {
+      console.error("Login error:", err);
+      setError(err.message || "Failed to sign in. Please check your credentials.");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleGoogleLogin = () => {
-    // This would trigger OAuth with Google in a real application
-    console.log("Logging in with Google");
+  const handleGoogleLogin = async () => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // Sign in with Google OAuth
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback?userType=educator`,
+        }
+      });
+
+      if (error) {
+        throw error;
+      }
+      
+      // The redirect happens automatically, no need to handle navigation here
+    } catch (err: any) {
+      console.error("Google login error:", err);
+      setError(err.message || "Failed to sign in with Google. Please try again.");
+      setLoading(false);
+    }
   };
 
   return (
@@ -73,13 +121,24 @@ export default function EducatorLogin() {
               </p>
             </div>
 
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-6">
+                {error}
+              </div>
+            )}
+
             <div className="space-y-6">
               <Button 
                 variant="outline" 
                 className="w-full flex items-center justify-center gap-2 py-5 border-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
                 onClick={handleGoogleLogin}
+                disabled={loading}
               >
-                <Image src="/Google__G__logo.svg" alt="Google" width={20} height={20} />
+                {loading ? (
+                  <span className="animate-spin mr-2">⚪</span>
+                ) : (
+                  <Image src="/Google__G__logo.svg" alt="Google" width={20} height={20} />
+                )}
                 <span>Sign in with Google</span>
               </Button>
 
@@ -99,13 +158,14 @@ export default function EducatorLogin() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
+                    disabled={loading}
                   />
                 </div>
 
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="password">Password</Label>
-                    <Link href="/student/forgot-password" className="text-sm text-blue-600 hover:underline">
+                    <Link href="/educator/forgot-password" className="text-sm text-blue-600 hover:underline">
                       Forgot password?
                     </Link>
                   </div>
@@ -116,6 +176,7 @@ export default function EducatorLogin() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
+                    disabled={loading}
                   />
                 </div>
 
@@ -127,14 +188,19 @@ export default function EducatorLogin() {
                     className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                     checked={rememberMe}
                     onChange={(e) => setRememberMe(e.target.checked)}
+                    disabled={loading}
                   />
                   <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-600 dark:text-gray-400">
                     Remember me
                   </label>
                 </div>
 
-                <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white py-5">
-                  Sign in
+                <Button 
+                  type="submit" 
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white py-5"
+                  disabled={loading}
+                >
+                  {loading ? "Signing in..." : "Sign in"}
                 </Button>
               </form>
             </div>
@@ -142,7 +208,7 @@ export default function EducatorLogin() {
             <div className="mt-6 text-center">
               <p className="text-sm text-gray-600 dark:text-gray-400">
                 Don't have an account?{" "}
-                <Link href="/student/register" className="text-blue-600 hover:underline">
+                <Link href="/educator/register" className="text-blue-600 hover:underline">
                   Create one
                 </Link>
               </p>
