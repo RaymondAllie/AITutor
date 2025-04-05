@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 export default function Educator() {
   const [isAddCourseModalOpen, setIsAddCourseModalOpen] = useState(false)
-
+  const educatorId = "teacher69"
 
   return (
     <div className="w-full space-y-8">
@@ -36,7 +36,7 @@ export default function Educator() {
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold">Your Courses</h2>
           </div>
-          <CourseList />
+          <CourseList person_id={educatorId} role="educator" />
         </TabsContent>
         
         <TabsContent value="active">

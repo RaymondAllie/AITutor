@@ -1,19 +1,20 @@
 "use client"
 
 import Link from "next/link"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { BookOpen, Users, FileText, ExternalLink } from "lucide-react"
+import { BookOpen, FileText, Clock, ExternalLink } from "lucide-react"
 
-// Mock data for courses
+// Mock data for courses - this would come from an API in a real application
 const courses = [
   { 
     id: 1, 
     name: "Introduction to Computer Science", 
     code: "CS101",
     description: "Learn the fundamentals of computer science and programming.",
-    students: 32,
     assignments: 8,
+    nextDue: "2 days",
+    progress: 35,
     color: "text-blue-600" 
   },
   { 
@@ -21,8 +22,9 @@ const courses = [
     name: "Data Structures and Algorithms", 
     code: "CS201",
     description: "Advanced data structures and algorithm analysis.",
-    students: 24,
     assignments: 6,
+    nextDue: "5 days",
+    progress: 22,
     color: "text-green-600" 
   },
   { 
@@ -30,8 +32,9 @@ const courses = [
     name: "Web Development", 
     code: "CS301",
     description: "Building modern web applications with current technologies.",
-    students: 28,
     assignments: 10,
+    nextDue: "1 day",
+    progress: 48,
     color: "text-purple-600" 
   },
   { 
@@ -39,19 +42,18 @@ const courses = [
     name: "Machine Learning", 
     code: "CS401",
     description: "Introduction to machine learning concepts and applications.",
-    students: 22,
     assignments: 5,
+    nextDue: "1 week",
+    progress: 15,
     color: "text-red-600" 
   },
 ]
 
-interface CourseListProps {
-  person_id: string;
-  role: 'student' | 'educator';
+interface StudentCourseListProps {
+  studentId: string;
 }
 
-export function CourseList({ person_id, role }: CourseListProps) {
-  
+export function StudentCourseList({ studentId }: StudentCourseListProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       {courses.map((course) => {
@@ -60,7 +62,7 @@ export function CourseList({ person_id, role }: CourseListProps) {
         return (
           <Link 
             key={course.id} 
-            href={`/${role}/${person_id}/${courseSlug}`}
+            href={`/student/${studentId}/${courseSlug}`}
             className="block h-full transition-transform hover:scale-[1.02]"
           >
             <Card className="h-full overflow-hidden border border-gray-200 shadow-sm hover:shadow">
@@ -72,12 +74,12 @@ export function CourseList({ person_id, role }: CourseListProps) {
               <CardContent className="pt-0">                
                 <div className="grid grid-cols-12 gap-2 text-sm">
                   <div className="col-span-5 flex items-center">
-                    <Users className="mr-2 h-4 w-4 text-gray-400" />
-                    <span className="truncate">{course.students} Students</span>
-                  </div>
-                  <div className="col-span-5 flex items-center">
                     <FileText className="mr-2 h-4 w-4 text-gray-400" />
                     <span className="truncate">{course.assignments} Assignments</span>
+                  </div>
+                  <div className="col-span-5 flex items-center">
+                    <Clock className="mr-2 h-4 w-4 text-gray-400" />
+                    <span className="truncate">Next due: {course.nextDue}</span>
                   </div>
                   <div className="col-span-2 flex justify-end">
                     <Button variant="ghost" size="icon">
@@ -86,11 +88,23 @@ export function CourseList({ person_id, role }: CourseListProps) {
                   </div>
                 </div>
                 
+                <div className="mt-4">
+                  <div className="flex justify-between items-center mb-1 text-xs">
+                    <span>Progress</span>
+                    <span>{course.progress}%</span>
+                  </div>
+                  <div className="w-full bg-secondary h-1.5 rounded-full">
+                    <div 
+                      className="bg-primary h-1.5 rounded-full" 
+                      style={{ width: `${course.progress}%` }}
+                    ></div>
+                  </div>
+                </div>
               </CardContent>
-                          </Card>
+            </Card>
           </Link>
         )
       })}
     </div>
   )
-}
+} 
