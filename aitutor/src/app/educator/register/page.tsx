@@ -62,27 +62,13 @@ export default function EducatorRegister() {
             id: data.user.id,
             role: 'educator',
             name: name,
+            email: email,
           }, { onConflict: 'id' });
         
         if (insertError) {
           console.error("Error storing user data:", insertError);
         }
-        
-        // Create an educator profile in your database
-        const { error: profileError } = await supabase
-          .from('educator_profiles')
-          .insert([
-            { 
-              user_id: data.user.id,
-              name,
-              email
-            }
-          ]);
-          
-        if (profileError) {
-          console.error("Error creating educator profile:", profileError);
-        }
-        
+                
         // Check if email confirmation is required
         if (data?.user?.identities?.length === 0) {
           router.push("/educator/register/confirmation");

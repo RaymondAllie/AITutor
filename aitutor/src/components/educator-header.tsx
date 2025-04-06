@@ -138,12 +138,12 @@ export function EducatorHeader() {
           </NavigationMenuList>
         </NavigationMenu>
         
-        <div className="ml-auto flex items-center space-x-4">
+        {/* <div className="ml-auto flex items-center space-x-4">
           <Avatar>
             <AvatarImage src="/avatars/teacher.jpg" alt="Teacher" />
             <AvatarFallback>TE</AvatarFallback>
           </Avatar>
-        </div>
+        </div> */}
       </div>
     </header>
   )

@@ -1,51 +1,76 @@
 "use client"
 
-import { useParams } from "next/navigation"
+import { useParams, useSearchParams } from "next/navigation"
 import Link from "next/link"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { BookOpen, Calendar, Clock, PlusCircle } from "lucide-react"
 import { JoinCourseModal } from "@/components/join-course-modal"
 import { StudentCourseList } from "@/components/student-course-list"
+import { supabase } from "@/lib/supabase"
 
-// Mock data for courses - in a real app, this would be fetched from a database
-const courses = [
-  { 
-    id: 1, 
-    name: "Introduction to Computer Science", 
-    code: "CS101",
-    slug: "introduction-to-computer-science",
-    description: "Learn the basics of programming and computer science concepts.",
-    recentTopics: ["Variables and Data Types", "Control Flow", "Functions"],
-    assignments: [
-      { name: "Assignment 1: Variables", dueDate: "2023-05-15", completed: true },
-      { name: "Assignment 2: Loops", dueDate: "2023-05-22", completed: false },
-    ]
-  },
-  { 
-    id: 2, 
-    name: "Data Structures and Algorithms", 
-    code: "CS201",
-    slug: "data-structures-and-algorithms",
-    description: "Explore advanced data structures and algorithm design techniques.",
-    recentTopics: ["Arrays and Linked Lists", "Trees and Graphs", "Searching Algorithms"],
-    assignments: [
-      { name: "Assignment 1: Array Operations", dueDate: "2023-05-18", completed: false },
-    ]
-  },
-]
+interface User {
+  id: string
+  name: string
+  email: string
+}
 
 export default function StudentDashboard() {
-  const studentId = "student123"
-  const [joinCourseModalOpen, setJoinCourseModalOpen] = useState(false)
+  const params = useParams()
+  const searchParams = useSearchParams()
+  const studentId = params.studentId as string
+  const shouldOpenJoinModal = searchParams.get('join') === 'true'
+  const [joinCourseModalOpen, setJoinCourseModalOpen] = useState(shouldOpenJoinModal)
+  const [user, setUser] = useState<User | null>(null)
+  const [loading, setLoading] = useState(true)
+  
+  // Function to load user data
+  const loadUserData = async () => {
+    setLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, name, email')
+        .eq('id', studentId)
+        .single()
+      
+      if (error) throw error
+      setUser(data)
+    } catch (err) {
+      console.error('Error loading user data:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+  
+  useEffect(() => {
+    if (studentId) {
+      loadUserData()
+    }
+  }, [studentId])
+  
+  // Update modal state when URL query parameter changes
+  useEffect(() => {
+    setJoinCourseModalOpen(shouldOpenJoinModal)
+  }, [shouldOpenJoinModal])
+  
+  if (loading) {
+    return (
+      <div className="w-full h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    )
+  }
   
   return (
     <div className="w-full space-y-8">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Student Dashboard</h1>
+          <h1 className="text-3xl font-bold tracking-tight">
+            Hi, {user?.name || 'Student'}
+          </h1>
           <p className="text-muted-foreground">
             View your courses, assignments, and track your progress.
           </p>
@@ -65,7 +90,7 @@ export default function StudentDashboard() {
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold">Your Courses</h2>
           </div>
-            <StudentCourseList studentId={studentId} />
+          <StudentCourseList studentId={studentId} />
         </TabsContent>
         
         <TabsContent value="archived">
@@ -82,6 +107,8 @@ export default function StudentDashboard() {
       <JoinCourseModal 
         isOpen={joinCourseModalOpen} 
         onClose={() => setJoinCourseModalOpen(false)} 
+        userId={studentId}
+        onCourseJoined={loadUserData}
       />
     </div>
   )

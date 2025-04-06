@@ -7,56 +7,103 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { AlertCircle, CheckCircle } from "lucide-react"
+import { supabase } from "@/lib/supabase"
 
 interface JoinCourseModalProps {
   isOpen: boolean
   onClose: () => void
+  userId?: string
+  onCourseJoined?: () => void
 }
 
-export function JoinCourseModal({ isOpen, onClose }: JoinCourseModalProps) {
+export function JoinCourseModal({ isOpen, onClose, userId, onCourseJoined }: JoinCourseModalProps) {
   const router = useRouter()
-  const [courseId, setCourseId] = useState("")
+  const [courseCode, setCourseCode] = useState("")
   const [isJoining, setIsJoining] = useState(false)
   const [isComplete, setIsComplete] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [joinedCourse, setJoinedCourse] = useState<{ id: string, name: string, slug: string } | null>(null)
   
-  // Mocked student ID - in a real app this would come from authentication
-  const studentId = "student123"
-  
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
     setIsJoining(true)
     
-    // Mock API call to join course
-    setTimeout(() => {
-      // In a real app, this would check if the course ID exists and join the student to the course
-      if (courseId === "CS101" || courseId === "CS201") {
-        setIsComplete(true)
-        setIsJoining(false)
-      } else {
-        setError("Course not found. Please check the course ID and try again.")
-        setIsJoining(false)
+    try {
+      if (!userId) {
+        throw new Error("User ID is required to join a course")
       }
-    }, 1000)
+      
+      // Find the course by code
+      const { data: courseData, error: courseError } = await supabase
+        .from('courses')
+        .select('id, name, course_code')
+        .ilike('course_code', courseCode.trim())
+        .single()
+      
+      if (courseError) {
+        throw new Error("Course not found. Please check the course code and try again.")
+      }
+      
+      // Check if the user is already enrolled in this course
+      const { data: existingEnrollment, error: enrollmentError } = await supabase
+        .from('users_courses')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('course_id', courseData.id)
+        .single()
+      
+      if (existingEnrollment) {
+        throw new Error("You are already enrolled in this course.")
+      }
+      
+      // Create the relationship in the users_courses join table
+      const { error: joinError } = await supabase
+        .from('users_courses')
+        .insert({
+          user_id: userId,
+          course_id: courseData.id,
+          role: 'student'
+        })
+      
+      if (joinError) throw joinError
+      
+      // Generate a slug for the course name
+      const courseSlug = courseData.name.toLowerCase().replace(/\s+/g, '-')
+      
+      setJoinedCourse({
+        id: courseData.id,
+        name: courseData.name,
+        slug: courseSlug
+      })
+      
+      setIsComplete(true)
+      
+      // Call the callback if provided
+      if (onCourseJoined) {
+        onCourseJoined()
+      }
+    } catch (err: any) {
+      console.error("Error joining course:", err)
+      setError(err.message || "Failed to join course. Please try again.")
+    } finally {
+      setIsJoining(false)
+    }
   }
   
   const handleFinish = () => {
-    // In a real app, this would navigate to the course page
-    // For now, we'll just mock the behavior with a course slug
-    const courseSlug = courseId === "CS101" 
-      ? "introduction-to-computer-science"
-      : "data-structures-and-algorithms"
-    
-    router.push(`/student/${studentId}/${courseSlug}`)
+    if (joinedCourse?.slug && userId) {
+      router.push(`/student/${userId}/${joinedCourse.slug}`)
+    }
     resetForm()
     onClose()
   }
   
   const resetForm = () => {
-    setCourseId("")
+    setCourseCode("")
     setIsComplete(false)
     setError(null)
+    setJoinedCourse(null)
   }
   
   return (
@@ -70,7 +117,7 @@ export function JoinCourseModal({ isOpen, onClose }: JoinCourseModalProps) {
         <DialogHeader>
           <DialogTitle>Join a Course</DialogTitle>
           <DialogDescription>
-            Enter the course ID provided by your instructor.
+            Enter the course code provided by your instructor.
           </DialogDescription>
         </DialogHeader>
         
@@ -78,13 +125,13 @@ export function JoinCourseModal({ isOpen, onClose }: JoinCourseModalProps) {
           {!isComplete ? (
             <div className="grid gap-4 py-4">
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="courseId" className="text-right">
-                  Course ID
+                <Label htmlFor="courseCode" className="text-right">
+                  Course Code
                 </Label>
                 <Input
-                  id="courseId"
-                  value={courseId}
-                  onChange={(e) => setCourseId(e.target.value)}
+                  id="courseCode"
+                  value={courseCode}
+                  onChange={(e) => setCourseCode(e.target.value)}
                   className="col-span-3"
                   required
                   placeholder="e.g., CS101"
@@ -103,7 +150,7 @@ export function JoinCourseModal({ isOpen, onClose }: JoinCourseModalProps) {
               <CheckCircle className="text-green-500 h-16 w-16 mb-4" />
               <h3 className="text-xl font-medium mb-2">Course Joined Successfully!</h3>
               <p className="text-gray-500 mb-6">
-                You have successfully joined the course with ID "{courseId}".
+                You have successfully joined the course "{joinedCourse?.name}".
               </p>
               <Button onClick={handleFinish} className="w-full">
                 Go to Course Page
@@ -115,7 +162,7 @@ export function JoinCourseModal({ isOpen, onClose }: JoinCourseModalProps) {
             <DialogFooter>
               <Button 
                 type="submit" 
-                disabled={isJoining || !courseId.trim()}
+                disabled={isJoining || !courseCode.trim()}
               >
                 {isJoining ? "Joining..." : "Join Course"}
               </Button>
