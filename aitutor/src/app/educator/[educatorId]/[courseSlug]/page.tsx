@@ -15,7 +15,11 @@ import {
   X,
   Check,
   Paperclip,
-  Info
+  Info,
+  Edit,
+  Trash2,
+  MessageCircle,
+  Plus
 } from "lucide-react"
 import {
   Dialog,
@@ -94,6 +98,15 @@ export default function CoursePage() {
     dueDate: "",
     attachedMaterials: [] as string[]
   })
+
+  // State for problems dialog
+  const [problemsDialogOpen, setProblemsDialogOpen] = useState(false)
+  const [currentAssignmentForProblems, setCurrentAssignmentForProblems] = useState<Assignment | null>(null)
+  const [problems, setProblems] = useState<Problem[]>([])
+  const [newProblem, setNewProblem] = useState("")
+  const [editingProblem, setEditingProblem] = useState<{id: string, text: string} | null>(null)
+  const [isLoadingProblems, setIsLoadingProblems] = useState(false)
+  const [problemsError, setProblemsError] = useState<string | null>(null)
 
   // Open materials dialog for an assignment
   const openMaterialsDialog = (assignmentId: string) => {
@@ -229,6 +242,178 @@ export default function CoursePage() {
         attachedMaterials: []
       })
       setAddAssignmentDialogOpen(false)
+    }
+  }
+  
+  // Open problems dialog for an assignment
+  const openProblemsDialog = async (assignmentId: string) => {
+    const assignment = course?.assignments.find(a => a.id === assignmentId)
+    if (assignment) {
+      setCurrentAssignmentForProblems(assignment)
+      setProblemsDialogOpen(true)
+      await loadProblemsForAssignment(assignmentId)
+    }
+  }
+
+  // Load problems for an assignment
+  const loadProblemsForAssignment = async (assignmentId: string) => {
+    setIsLoadingProblems(true)
+    setProblemsError(null)
+    setProblems([])
+    
+    try {
+      // First get the problem IDs from the join table
+      const { data: assignmentProblemsData, error: assignmentProblemsError } = await supabase
+        .from('assignments_problems')
+        .select('problem_id')
+        .eq('assignment_id', assignmentId)
+      
+      if (assignmentProblemsError) throw assignmentProblemsError
+      
+      if (!assignmentProblemsData || assignmentProblemsData.length === 0) {
+        setProblems([])
+        setIsLoadingProblems(false)
+        return
+      }
+      
+      const problemIds = assignmentProblemsData.map(row => row.problem_id)
+      
+      // Then fetch the actual problems
+      const { data: problemsData, error: problemsError } = await supabase
+        .from('problems')
+        .select('*')
+        .in('id', problemIds)
+      
+      if (problemsError) throw problemsError
+      
+      setProblems(problemsData || [])
+    } catch (err: any) {
+      console.error("Error loading problems:", err)
+      setProblemsError(err.message || "Failed to load problems")
+    } finally {
+      setIsLoadingProblems(false)
+    }
+  }
+  
+  // Add a new problem
+  const handleAddProblem = async () => {
+    if (!currentAssignmentForProblems || !newProblem.trim()) return
+    
+    try {
+      // First, insert the problem into the problems table
+      const { data: problemData, error: problemError } = await supabase
+        .from('problems')
+        .insert({
+          question: newProblem,
+          id: currentAssignmentForProblems.id
+        })
+        .select()
+      
+      if (problemError) throw problemError
+      
+      const newProblemWithId = problemData[0] as Problem
+      
+      // Then, create an entry in the join table
+      const { error: joinError } = await supabase
+        .from('assignments_problems')
+        .insert({
+          assignment_id: currentAssignmentForProblems.id,
+          problem_id: newProblemWithId.id
+        })
+      
+      if (joinError) throw joinError
+      
+      // Update the local state
+      setProblems([...problems, newProblemWithId])
+      setNewProblem("")
+      
+      // Update the problem count in the assignment
+      if (course) {
+        setCourse({
+          ...course,
+          assignments: course.assignments.map(assignment => 
+            assignment.id === currentAssignmentForProblems.id 
+              ? { ...assignment, problem_count: (assignment.problem_count || 0) + 1 }
+              : assignment
+          )
+        })
+      }
+      
+      toast.success("Problem added successfully")
+    } catch (err: any) {
+      console.error("Error adding problem:", err)
+      toast.error("Failed to add problem")
+    }
+  }
+  
+  // Update an existing problem
+  const handleUpdateProblem = async () => {
+    if (!editingProblem || !editingProblem.text.trim()) return
+    
+    try {
+      const { error } = await supabase
+        .from('problems')
+        .update({ question: editingProblem.text })
+        .eq('id', editingProblem.id)
+      
+      if (error) throw error
+      
+      // Update the local state
+      setProblems(problems.map(problem => 
+        problem.id === editingProblem.id 
+          ? { ...problem, question: editingProblem.text }
+          : problem
+      ))
+      
+      setEditingProblem(null)
+      toast.success("Problem updated successfully")
+    } catch (err: any) {
+      console.error("Error updating problem:", err)
+      toast.error("Failed to update problem")
+    }
+  }
+  
+  // Delete a problem
+  const handleDeleteProblem = async (problemId: string) => {
+    if (!currentAssignmentForProblems) return
+    
+    try {
+      // First, delete the entry from the join table
+      const { error: joinError } = await supabase
+        .from('assignments_problems')
+        .delete()
+        .eq('assignment_id', currentAssignmentForProblems.id)
+        .eq('problem_id', problemId)
+      
+      if (joinError) throw joinError
+      
+      // Then, delete the problem itself
+      const { error: problemError } = await supabase
+        .from('problems')
+        .delete()
+        .eq('id', problemId)
+      
+      if (problemError) throw problemError
+      
+      // Update the local state
+      setProblems(problems.filter(problem => problem.id !== problemId))
+      
+      // Update the problem count in the assignment
+      if (course) {
+        setCourse({
+          ...course,
+          assignments: course.assignments.map(assignment => 
+            assignment.id === currentAssignmentForProblems.id 
+              ? { ...assignment, problem_count: Math.max(0, (assignment.problem_count || 0) - 1) }
+              : assignment
+          )
+        })
+      }
+      
+      toast.success("Problem deleted successfully")
+    } catch (err: any) {
+      console.error("Error deleting problem:", err)
+      toast.error("Failed to delete problem")
     }
   }
   
@@ -492,7 +677,11 @@ export default function CoursePage() {
         ) : (
           <div className="space-y-4">
             {sortedAssignments.map((assignment) => (
-              <Card key={assignment.id} className="overflow-hidden border border-gray-300">
+              <Card 
+                key={assignment.id} 
+                className="overflow-hidden border border-gray-300 hover:shadow-md transition-shadow cursor-pointer"
+                onClick={() => openProblemsDialog(assignment.id)}
+              >
                 <CardHeader className="">
                   <div className="flex justify-between items-start">
                     <CardTitle className="text-xl">{assignment.name}</CardTitle>
@@ -500,7 +689,10 @@ export default function CoursePage() {
                       <Button 
                         size="sm" 
                         variant="outline"
-                        onClick={() => openMaterialsDialog(assignment.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openMaterialsDialog(assignment.id);
+                        }}
                       >
                         <Paperclip className="mr-1 h-4 w-4" /> 
                         {assignment.material_ids && assignment.material_ids.length > 0 ? 
@@ -508,13 +700,21 @@ export default function CoursePage() {
                           "Attach Materials"
                         }
                       </Button>
-                      <Button size="sm" variant="outline" className="bg-gray-100 text-black hover:bg-gray-200">View Chatbot Logs</Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="bg-gray-100 text-black hover:bg-gray-200"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        View Chatbot Logs
+                      </Button>
                       <div className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
                         Due: {formatDate(assignment.due_date)}
                       </div>
                       {assignment.problem_count !== undefined && (
-                        <div className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm font-medium">
-                          {assignment.problem_count} Problems
+                        <div className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm font-medium flex items-center gap-1">
+                          <MessageCircle className="h-3 w-3" />
+                          {assignment.problem_count} {assignment.problem_count === 1 ? 'Problem' : 'Problems'}
                         </div>
                       )}
                     </div>
@@ -800,6 +1000,135 @@ export default function CoursePage() {
                 Create Assignment
               </Button>
             </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Problems Dialog */}
+      <Dialog open={problemsDialogOpen} onOpenChange={setProblemsDialogOpen}>
+        <DialogContent className="sm:max-w-[700px]">
+          <DialogHeader>
+            <DialogTitle>
+              Problems for: {currentAssignmentForProblems?.name}
+            </DialogTitle>
+            <DialogDescription>
+              Add, edit, or remove problems for this assignment. Students will need to complete these problems.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-4 space-y-4 max-h-[70vh] overflow-y-auto">
+            {isLoadingProblems ? (
+              <div className="flex justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              </div>
+            ) : problemsError ? (
+              <div className="text-center py-6 text-red-600">
+                <p>{problemsError}</p>
+                <Button 
+                  className="mt-4" 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => currentAssignmentForProblems && loadProblemsForAssignment(currentAssignmentForProblems.id)}
+                >
+                  Try Again
+                </Button>
+              </div>
+            ) : (
+              <>
+                {problems.length === 0 ? (
+                  <div className="text-center py-8 border rounded-md">
+                    <MessageCircle className="h-10 w-10 mx-auto text-gray-400 mb-3" />
+                    <h3 className="text-lg font-medium text-gray-700">No Problems Yet</h3>
+                    <p className="text-gray-500 max-w-md mx-auto mt-2">
+                      Add problems for your students to solve.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {problems.map((problem) => (
+                      <div key={problem.id} className="border rounded-md p-4 bg-gray-50">
+                        {editingProblem && editingProblem.id === problem.id ? (
+                          <div className="space-y-3">
+                            <Textarea
+                              value={editingProblem.text}
+                              onChange={(e) => setEditingProblem({...editingProblem, text: e.target.value})}
+                              placeholder="Problem question..."
+                              rows={3}
+                            />
+                            <div className="flex justify-end gap-2">
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                onClick={() => setEditingProblem(null)}
+                              >
+                                Cancel
+                              </Button>
+                              <Button 
+                                size="sm" 
+                                onClick={handleUpdateProblem}
+                                disabled={!editingProblem.text.trim()}
+                              >
+                                Save Changes
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1 pr-4">
+                              <p className="text-gray-800">{problem.question}</p>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                onClick={() => setEditingProblem({id: problem.id, text: problem.question})}
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="icon"
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                onClick={() => handleDeleteProblem(problem.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                <div className="mt-6 border-t pt-4">
+                  <h4 className="font-medium mb-2">Add New Problem</h4>
+                  <div className="space-y-3">
+                    <Textarea
+                      value={newProblem}
+                      onChange={(e) => setNewProblem(e.target.value)}
+                      placeholder="Enter a problem question..."
+                      rows={3}
+                    />
+                    <Button 
+                      onClick={handleAddProblem}
+                      disabled={!newProblem.trim()}
+                    >
+                      <Plus className="mr-2 h-4 w-4" /> Add Problem
+                    </Button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+          
+          <DialogFooter>
+            <Button 
+              onClick={() => setProblemsDialogOpen(false)}
+              variant="outline"
+            >
+              Close
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

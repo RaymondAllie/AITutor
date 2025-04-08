@@ -100,7 +100,7 @@ export function AppSidebar() {
           // Add slug to each course
           const coursesWithSlugs = coursesData?.map(course => ({
             ...course,
-            slug: course.name.toLowerCase().replace(/\s+/g, '-')
+            slug: course.course_code.replace(/\s+/g, '-')
           })) || []
           
           setCourses(coursesWithSlugs)
