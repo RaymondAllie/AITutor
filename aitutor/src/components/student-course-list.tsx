@@ -146,7 +146,7 @@ export function StudentCourseList({ studentId }: StudentCourseListProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       {courses.map((course) => {
-        const courseSlug = course.name.toLowerCase().replace(/\s+/g, '-')
+        const courseSlug = course.code.toLowerCase().replace(/\s+/g, '-')
         const courseAssignments = assignments[course.id] || []
         const nextDueAssignment = courseAssignments.length > 0 ? courseAssignments[0] : null
         const daysUntilDue = nextDueAssignment 

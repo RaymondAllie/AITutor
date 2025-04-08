@@ -118,7 +118,7 @@ export default function Educator() {
           {courses.length > 0 ? (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {courses.map((course) => (
-                <Link href={`/educator/${educatorId}/${course.name.toLowerCase().replace(/\s+/g, '-')}`} key={course.id}>
+                <Link href={`/educator/${educatorId}/${course.course_code.replace(/\s+/g, '-')}`} key={course.id}>
                   <Card className="cursor-pointer hover:shadow-md transition-shadow">
                     <CardHeader className="pb-2">
                       <CardTitle className="text-xl">{course.name}</CardTitle>

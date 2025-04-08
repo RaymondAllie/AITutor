@@ -35,48 +35,7 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog"
-
-// Mock data for a specific assignment
-const mockAssignment = {
-  id: "a1",
-  name: "Hello World Program",
-  slug: "hello-world-program",
-  courseName: "Introduction to Computer Science",
-  courseSlug: "introduction-to-computer-science",
-  dueDate: "2025-04-10",
-  description: "Write a simple program that outputs 'Hello, World!' to the console.",
-  questions: [
-    {
-      id: "q1",
-      text: "What is the purpose of a 'Hello World' program?",
-      hint: "Think about what developers are trying to test or verify with this type of program."
-    },
-    {
-      id: "q2",
-      text: "Write a simple 'Hello World' program in a programming language of your choice.",
-      hint: "Remember to use the correct syntax for print/output statements."
-    },
-    {
-      id: "q3",
-      text: "Why is 'Hello World' traditionally the first program developers learn in a new language?",
-      hint: "Consider the simplicity and what it allows you to confirm about your development environment."
-    },
-    {
-      id: "q4",
-      text: "How would you modify your 'Hello World' program to display your name instead?",
-      hint: "You'll need to change the string within the print statement."
-    }
-  ],
-  materials: [
-    { id: "m1", name: "Week 1: Introduction to Programming", type: "slides" },
-    { id: "m2", name: "Coding Style Guide", type: "resource" }
-  ],
-  nextAssignment: {
-    id: "a2",
-    name: "Variables and Data Types",
-    slug: "variables-and-data-types"
-  }
-};
+import { supabase } from "@/lib/supabase"
 
 // Message types for chat
 type MessageRole = 'user' | 'assistant' | 'system';
@@ -86,41 +45,253 @@ interface Message {
   timestamp: Date;
 }
 
+interface Question {
+  id: string;
+  question: string;
+  hint?: string;
+  assignment_id: string;
+  completed?: boolean;
+}
+
+interface Material {
+  id: string;
+  name: string;
+  type: string;
+  url?: string;
+}
+
+interface Assignment {
+  id: string;
+  name: string;
+  slug?: string;
+  courseName?: string;
+  courseSlug?: string;
+  due_date: string;
+  description: string;
+  materials: Material[];
+  questions: Question[];
+  nextAssignment?: {
+    id: string;
+    name: string;
+    slug: string;
+  };
+}
+
 export default function AssignmentPage() {
   const params = useParams();
   const { studentId, courseSlug, assignmentSlug } = params;
   
   // State for the assignment data
-  const [assignment, setAssignment] = useState(mockAssignment);
+  const [assignment, setAssignment] = useState<Assignment | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [completedQuestions, setCompletedQuestions] = useState<string[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const [showCompletionDialog, setShowCompletionDialog] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
-  const currentQuestion = assignment?.questions[currentQuestionIndex];
+  const currentQuestion = assignment?.questions?.[currentQuestionIndex];
   const progress = assignment ? (completedQuestions.length / assignment.questions.length) * 100 : 0;
   const allQuestionsCompleted = assignment ? completedQuestions.length === assignment.questions.length : false;
   
   // Load assignment data
   useEffect(() => {
-    // Simulate API call to get assignment data
-    setTimeout(() => {
-      // Initial system message introducing the current question
-      if (mockAssignment) {
-        const initialMessage: Message = {
-          role: 'system',
-          content: `Welcome to the ${mockAssignment.name} assignment. Let's start with the first question: "${mockAssignment.questions[0].text}"`,
-          timestamp: new Date()
+    const fetchAssignmentData = async () => {
+      setLoading(true);
+      setError(null);
+      
+      try {
+        // Format assignmentSlug by replacing dashes with spaces
+        const formattedAssignmentSlug = assignmentSlug ? (assignmentSlug as string).replace(/-/g, ' ') : '';
+        const formattedCourseSlug = courseSlug ? (courseSlug as string).replace(/-/g, ' ') : '';
+        
+        console.log(`Fetching data for course: ${formattedCourseSlug}, assignment: ${formattedAssignmentSlug}`);
+        
+        // 1. Fetch the course
+        const { data: courseData, error: courseError } = await supabase
+          .from('courses')
+          .select('id, name, course_code')
+          .eq('course_code', formattedCourseSlug)
+          .single();
+          
+        if (courseError) {
+          console.error("Error fetching course:", courseError);
+          throw new Error(`Course not found: ${courseError.message}`);
+        }
+        if (!courseData) throw new Error("Course not found");
+        
+        console.log("Found course:", courseData);
+        
+        // 2. Fetch the assignment
+        const { data: assignmentData, error: assignmentError } = await supabase
+          .from('assignments')
+          .select('*')
+          .ilike('name', formattedAssignmentSlug)
+          .single();
+          
+        if (assignmentError) {
+          console.error("Error fetching assignment:", assignmentError);
+          throw new Error(`Assignment not found: ${assignmentError.message}`);
+        }
+        if (!assignmentData) throw new Error("Assignment not found");
+        
+        console.log("Found assignment:", assignmentData);
+        
+        // 3. Check if this assignment belongs to this course through the join table
+        const { data: coursesAssignmentsData, error: coursesAssignmentsError } = await supabase
+          .from('courses_assignments')
+          .select('*')
+          .eq('course_id', courseData.id)
+          .eq('assignment_id', assignmentData.id);
+          
+        if (coursesAssignmentsError) throw coursesAssignmentsError;
+        if (!coursesAssignmentsData || coursesAssignmentsData.length === 0) throw new Error("Assignment not found in this course");
+        
+        // 4. Fetch materials for this assignment
+        let materials: Material[] = [];
+        if (assignmentData.material_ids && assignmentData.material_ids.length > 0) {
+          const { data: materialsData, error: materialsError } = await supabase
+            .from('materials')
+            .select('*')
+            .in('id', assignmentData.material_ids);
+            
+          if (!materialsError && materialsData) {
+            materials = materialsData;
+          }
+        }
+        
+        // 5. Fetch questions for this assignment
+        // First get the question IDs from the join table
+        const { data: assignmentProblemsData, error: assignmentProblemsError } = await supabase
+          .from('assignments_problems')
+          .select('problem_id')
+          .eq('assignment_id', assignmentData.id);
+          
+        if (assignmentProblemsError) throw assignmentProblemsError;
+        
+        let questions: Question[] = [];
+        if (assignmentProblemsData && assignmentProblemsData.length > 0) {
+          const problemIds = assignmentProblemsData.map(row => row.problem_id);
+          
+          // Then fetch the actual questions
+          const { data: problemsData, error: problemsError } = await supabase
+            .from('problems')
+            .select('*')
+            .in('id', problemIds);
+            
+          if (problemsError) throw problemsError;
+          
+          // 6. Get student's progress for these questions
+          const { data: progressData, error: progressError } = await supabase
+            .from('student_progress')
+            .select('*')
+            .eq('assignment_id', assignmentData.id)
+            .eq('student_id', studentId);
+          
+          // Map questions with completed status
+          questions = (problemsData || []).map(problem => {
+            const isCompleted = progressData?.some(
+              progress => progress.problem_id === problem.id && progress.completed
+            ) || false;
+            
+            return {
+              id: problem.id,
+              question: problem.question,
+              hint: problem.hint || "No hint available for this question.",
+              assignment_id: assignmentData.id,
+              completed: isCompleted
+            };
+          });
+          
+          // Initialize completedQuestions array from progress data
+          const completed = questions
+            .filter(q => q.completed)
+            .map(q => q.id);
+          
+          setCompletedQuestions(completed);
+        }
+        
+        // 7. Check if there's a next assignment in this course
+        let nextAssignment = undefined;
+        
+        const { data: courseAssignments, error: courseAssignmentsError } = await supabase
+          .from('courses_assignments')
+          .select('assignment_id')
+          .eq('course_id', courseData.id)
+          .order('created_at', { ascending: true });
+        
+        if (!courseAssignmentsError && courseAssignments) {
+          const assignmentIds = courseAssignments.map(ca => ca.assignment_id);
+          const currentIndex = assignmentIds.indexOf(assignmentData.id);
+          
+          if (currentIndex >= 0 && currentIndex < assignmentIds.length - 1) {
+            const nextAssignmentId = assignmentIds[currentIndex + 1];
+            
+            const { data: nextAssignmentData } = await supabase
+              .from('assignments')
+              .select('id, name')
+              .eq('id', nextAssignmentId)
+              .single();
+              
+            if (nextAssignmentData) {
+              nextAssignment = {
+                id: nextAssignmentData.id,
+                name: nextAssignmentData.name,
+                slug: nextAssignmentData.name.replace(/ /g, '-').toLowerCase()
+              };
+            }
+          }
+        }
+        
+        // 8. Create the full assignment object
+        const fullAssignment: Assignment = {
+          ...assignmentData,
+          slug: assignmentData.name.replace(/ /g, '-').toLowerCase(),
+          courseName: courseData.name,
+          courseSlug: courseSlug as string,
+          materials: materials,
+          questions: questions,
+          nextAssignment: nextAssignment
         };
-        setMessages([initialMessage]);
+        
+        console.log("Created full assignment object:", fullAssignment);
+        
+        setAssignment(fullAssignment);
+        
+        // Add initial system message
+        if (questions.length > 0) {
+          const initialMessage: Message = {
+            role: 'system',
+            content: `Welcome to the ${fullAssignment.name} assignment. Let's start with the first question: "${questions[0].question}"`,
+            timestamp: new Date()
+          };
+          setMessages([initialMessage]);
+        } else {
+          const initialMessage: Message = {
+            role: 'system',
+            content: `Welcome to the ${fullAssignment.name} assignment. This assignment doesn't have any questions yet.`,
+            timestamp: new Date()
+          };
+          setMessages([initialMessage]);
+        }
+        
+      } catch (err: any) {
+        console.error("Error fetching assignment data:", err);
+        setError(err.message || "Failed to load assignment data");
+      } finally {
+        setLoading(false);
       }
-      setAssignment(mockAssignment);
+    };
+    
+    if (studentId && courseSlug && assignmentSlug) {
+      fetchAssignmentData();
+    } else {
+      setError("Missing parameters to load the assignment");
       setLoading(false);
-    }, 500);
-  }, [assignmentSlug, courseSlug, studentId]);
+    }
+  }, [studentId, courseSlug, assignmentSlug]);
   
   // Scroll to bottom of chat when messages change
   useEffect(() => {
@@ -142,6 +313,20 @@ export default function AssignmentPage() {
     );
   }
   
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen">
+        <h1 className="text-2xl font-bold mb-4">Error Loading Assignment</h1>
+        <p className="text-gray-500 mb-6">
+          {error}
+        </p>
+        <Button asChild>
+          <a href={`/student/${studentId}/${courseSlug}`}>Go Back to Course</a>
+        </Button>
+      </div>
+    );
+  }
+  
   if (!assignment) {
     return (
       <div className="flex flex-col items-center justify-center h-screen">
@@ -158,13 +343,13 @@ export default function AssignmentPage() {
   
   // Navigate to previous question
   const goToPreviousQuestion = () => {
-    if (currentQuestionIndex > 0) {
+    if (currentQuestionIndex > 0 && assignment) {
       setCurrentQuestionIndex(currentQuestionIndex - 1);
       
       // Add system message for the new question
       const newMessage: Message = {
         role: 'system',
-        content: `Let's go back to question ${currentQuestionIndex}: "${assignment.questions[currentQuestionIndex - 1].text}"`,
+        content: `Let's go back to question ${currentQuestionIndex}: "${assignment.questions[currentQuestionIndex - 1].question}"`,
         timestamp: new Date()
       };
       setMessages([...messages, newMessage]);
@@ -173,13 +358,13 @@ export default function AssignmentPage() {
   
   // Navigate to next question
   const goToNextQuestion = () => {
-    if (currentQuestionIndex < assignment.questions.length - 1) {
+    if (assignment && currentQuestionIndex < assignment.questions.length - 1) {
       setCurrentQuestionIndex(currentQuestionIndex + 1);
       
       // Add system message for the new question
       const newMessage: Message = {
         role: 'system',
-        content: `Let's move on to question ${currentQuestionIndex + 2}: "${assignment.questions[currentQuestionIndex + 1].text}"`,
+        content: `Let's move on to question ${currentQuestionIndex + 2}: "${assignment.questions[currentQuestionIndex + 1].question}"`,
         timestamp: new Date()
       };
       setMessages([...messages, newMessage]);
@@ -187,19 +372,39 @@ export default function AssignmentPage() {
   };
   
   // Mark current question as completed
-  const markAsCompleted = () => {
-    if (!completedQuestions.includes(currentQuestion.id)) {
-      setCompletedQuestions([...completedQuestions, currentQuestion.id]);
-    }
+  const markAsCompleted = async () => {
+    if (!assignment || !currentQuestion || completedQuestions.includes(currentQuestion.id)) return;
     
-    // If there are more questions, move to the next one
-    if (currentQuestionIndex < assignment.questions.length - 1) {
-      goToNextQuestion();
+    try {
+      // Save progress to Supabase
+      const { error } = await supabase
+        .from('student_progress')
+        .upsert({
+          student_id: studentId as string,
+          assignment_id: assignment.id,
+          problem_id: currentQuestion.id,
+          completed: true,
+          updated_at: new Date().toISOString()
+        });
+      
+      if (error) throw error;
+      
+      // Update local state
+      setCompletedQuestions(prev => [...prev, currentQuestion.id]);
+      
+      // If there are more questions, move to the next one
+      if (currentQuestionIndex < assignment.questions.length - 1) {
+        goToNextQuestion();
+      }
+    } catch (err) {
+      console.error("Error saving progress:", err);
     }
   };
   
   // Show hint for current question
   const showHint = () => {
+    if (!currentQuestion || !currentQuestion.hint) return;
+    
     const hintMessage: Message = {
       role: 'assistant',
       content: `Hint: ${currentQuestion.hint}`,
@@ -244,22 +449,20 @@ export default function AssignmentPage() {
   
   // Generate a mock AI response based on the user's message and current question
   const generateMockResponse = (userMessage: string, question: typeof currentQuestion) => {
+    if (!question) return "I'm not sure about that. Can you try asking something related to the current question?";
+    
     const userMessageLower = userMessage.toLowerCase();
     
     // Simple keyword matching for mock responses
-    if (question.id === 'q1') {
+    if (question.question.toLowerCase().includes('hello world')) {
       if (userMessageLower.includes('test') || userMessageLower.includes('verify')) {
         return "Great point! 'Hello World' programs are indeed used to verify that the programming environment is set up correctly. It serves as a simple test to make sure you can write, compile, and run code successfully.";
       } else if (userMessageLower.includes('first') || userMessageLower.includes('begin')) {
         return "'Hello World' programs are traditional first programs because they're simple and focus just on producing output - a perfect starting point for learning.";
-      } else {
-        return "The 'Hello World' program serves as a simple test to verify that your programming environment is set up correctly. It's a way to confirm that you can write, compile (if needed), and execute code in a new language or environment.";
-      }
-    } else if (question.id === 'q2') {
-      if (userMessageLower.includes('print') || userMessageLower.includes('console')) {
+      } else if (userMessageLower.includes('print') || userMessageLower.includes('console')) {
         return "That looks like a good start! The key elements of a 'Hello World' program are the print or output statement and the string 'Hello, World!' to be displayed. Would you like to see examples in different languages?";
       } else {
-        return "To write a 'Hello World' program, you need to use a print or output statement with the string 'Hello, World!'. For example:\n\nPython: `print('Hello, World!')`\nJavaScript: `console.log('Hello, World!')`\nJava: `System.out.println('Hello, World!')`\n\nDoes this help?";
+        return "The 'Hello World' program serves as a simple test to verify that your programming environment is set up correctly. It's a way to confirm that you can write, compile (if needed), and execute code in a new language or environment.";
       }
     } else {
       return "Good thinking. Do you have any specific questions about this assignment that I can help with?";
@@ -278,7 +481,7 @@ export default function AssignmentPage() {
   
   // Navigate to next assignment
   const goToNextAssignment = () => {
-    if (assignment.nextAssignment) {
+    if (assignment?.nextAssignment) {
       window.location.href = `/student/${studentId}/${courseSlug}/${assignment.nextAssignment.slug}`;
     } else {
       window.location.href = `/student/${studentId}/${courseSlug}`;
@@ -296,7 +499,7 @@ export default function AssignmentPage() {
           <h1 className="text-3xl font-bold">{assignment.name}</h1>
         </div>
         <div className="text-gray-600 mb-3">
-          {assignment.courseName} • Due: {new Date(assignment.dueDate).toLocaleDateString()}
+          {assignment.courseName} • Due: {new Date(assignment.due_date).toLocaleDateString()}
         </div>
         <div className="mb-4">
           <div className="flex justify-between items-center mb-1 text-sm">
@@ -306,7 +509,6 @@ export default function AssignmentPage() {
           <Progress 
             value={progress} 
             className={`h-2 ${allQuestionsCompleted ? 'bg-green-100' : ''}`}
-            indicatorClassName={allQuestionsCompleted ? 'bg-green-500' : undefined}
           />
         </div>
       </div>
@@ -325,13 +527,22 @@ export default function AssignmentPage() {
                   <Button size="sm" variant="ghost" onClick={showHint}>
                     <HelpCircle className="h-4 w-4 mr-1" /> Hint
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => markAsCompleted()}>
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    onClick={() => markAsCompleted()}
+                    disabled={!currentQuestion || completedQuestions.includes(currentQuestion.id)}
+                  >
                     Mark Complete
                   </Button>
                 </div>
               </div>
               <CardDescription>
-                Question {currentQuestionIndex + 1} of {assignment.questions.length}: {currentQuestion.text}
+                {currentQuestion ? (
+                  <>Question {currentQuestionIndex + 1} of {assignment.questions.length}: {currentQuestion.question}</>
+                ) : (
+                  <>No question selected</>
+                )}
               </CardDescription>
             </CardHeader>
             
@@ -454,7 +665,7 @@ export default function AssignmentPage() {
                     <div className="w-7 h-7 rounded-full bg-secondary text-foreground flex items-center justify-center mr-3 text-sm">
                       {index + 1}
                     </div>
-                    <div className="flex-1 text-sm">{question.text.length > 60 ? `${question.text.substring(0, 60)}...` : question.text}</div>
+                    <div className="flex-1 text-sm">{question.question.length > 60 ? `${question.question.substring(0, 60)}...` : question.question}</div>
                     {completedQuestions.includes(question.id) && (
                       <Badge variant="outline" className="ml-2 bg-green-50 text-green-600 border-green-200">
                         Completed
@@ -462,6 +673,12 @@ export default function AssignmentPage() {
                     )}
                   </div>
                 ))}
+                
+                {assignment.questions.length === 0 && (
+                  <div className="px-4 py-6 text-center text-gray-500">
+                    No questions available for this assignment.
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -486,7 +703,7 @@ export default function AssignmentPage() {
               You've successfully completed the "{assignment.name}" assignment. Your progress has been saved.
             </p>
             
-            {assignment.nextAssignment && (
+            {assignment?.nextAssignment && (
               <div className="bg-muted p-4 rounded-lg mb-4">
                 <h3 className="font-medium mb-2">Next Assignment:</h3>
                 <div className="flex items-center justify-between">
@@ -507,7 +724,7 @@ export default function AssignmentPage() {
                 Stay Here
               </Button>
               <Button type="button" onClick={goToNextAssignment}>
-                {assignment.nextAssignment ? 'Go to Next Assignment' : 'Return to Course'}
+                {assignment?.nextAssignment ? 'Go to Next Assignment' : 'Return to Course'}
               </Button>
             </div>
           </DialogFooter>

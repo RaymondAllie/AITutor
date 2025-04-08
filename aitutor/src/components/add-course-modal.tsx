@@ -48,6 +48,16 @@ export function AddCourseModal({ isOpen, onClose, userId, onCourseCreated }: Add
   const [materialType, setMaterialType] = useState<"textbook" | "powerpoint" | "pset" | "other">("textbook")
   const [materialFile, setMaterialFile] = useState<File | null>(null)
   
+  // Single assignment state
+  const [assignmentName, setAssignmentName] = useState("")
+  const [assignmentDate, setAssignmentDate] = useState("")
+  const [assignmentTime, setAssignmentTime] = useState("")
+  const [assignmentDescription, setAssignmentDescription] = useState("")
+  const [assignmentFile, setAssignmentFile] = useState<File | null>(null)
+  const [isGeneratingQuestions, setIsGeneratingQuestions] = useState(false)
+  const [questionsGenerated, setQuestionsGenerated] = useState(false)
+  const [generatedQuestions, setGeneratedQuestions] = useState<string[]>([])
+  
   const [assignments, setAssignments] = useState<Assignment[]>([])
   const [isCreating, setIsCreating] = useState(false)
   const [isCompleted, setIsCompleted] = useState(false)
@@ -93,6 +103,78 @@ export function AddCourseModal({ isOpen, onClose, userId, onCourseCreated }: Add
       }
     }
     
+    // If moving from step 3 to step 4, ensure questions have been generated and submit the assignment
+    if (step === 3) {
+      if (!questionsGenerated) {
+        setError("Please generate questions before proceeding")
+        return
+      }
+      
+      if (generatedQuestions.length === 0) {
+        setError("You need at least one question for the assignment")
+        return
+      }
+      
+      // Submit the assignment
+      setIsCreating(true)
+      try {
+        // Ensure generatedQuestions is an array of strings for problem_list
+        const problemList = generatedQuestions.map(q => q.toString());
+
+        let temporary_uuid = crypto.randomUUID()
+        
+        const assignmentData = {
+          course_id: COURSE_ID,
+          name: assignmentName,
+          due_date: assignmentDate && assignmentTime ? `${assignmentDate}T${assignmentTime}:00` : undefined,
+          description: assignmentDescription,
+          material_ids: [temporary_uuid], // Empty string as per requirements
+          problem_list: problemList // List of questions as strings
+        }
+        
+        // Log the structure to confirm it's correct
+        console.log("Submitting assignment with data:", JSON.stringify(assignmentData, null, 2))
+        
+        // Call the Supabase Edge Function
+        const response = await fetch('https://yhqxnhbpxjslmiwtfkez.supabase.co/functions/v1/add_assignment', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseAnonKey}`
+          },
+          body: JSON.stringify(assignmentData)
+        })
+
+        console.log("Assignment created response:", response)
+        
+        if (!response.ok) {
+          const errorText = await response.text()
+          console.error("Error response:", errorText)
+          
+          let errorMessage = 'Failed to create assignment'
+          try {
+            const errorData = JSON.parse(errorText)
+            errorMessage = errorData.message || errorMessage
+          } catch (e) {
+            // If we can't parse JSON, use the response text
+            errorMessage = errorText || errorMessage
+          }
+          
+          throw new Error(errorMessage)
+        }
+        
+        const result = await response.json()
+        console.log("Assignment created result:", result)
+      } catch (err: any) {
+        console.error("Error creating assignment:", err)
+        setError(err.message || "Failed to create assignment. Please try again.")
+        setIsCreating(false)
+        return // Don't proceed on error
+      } finally {
+        setIsCreating(false)
+      }
+    }
+    
     if (step < 4) setStep(step + 1)
   }
 
@@ -114,7 +196,7 @@ export function AddCourseModal({ isOpen, onClose, userId, onCourseCreated }: Add
     setAssignments(updatedAssignments)
   }
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, fileType: 'material' | 'assignment') => {
     const file = e.target.files?.[0] || null
     
     if (file) {
@@ -134,7 +216,11 @@ export function AddCourseModal({ isOpen, onClose, userId, onCourseCreated }: Add
       setError(null)
     }
     
-    setMaterialFile(file)
+    if (fileType === 'material') {
+      setMaterialFile(file)
+    } else {
+      setAssignmentFile(file)
+    }
   }
 
   const uploadMaterial = async (courseId: string): Promise<boolean> => {
@@ -266,17 +352,11 @@ export function AddCourseModal({ isOpen, onClose, userId, onCourseCreated }: Add
     setMaterialUploadFailed(false)
     
     try {
-      // Try to upload material if provided
-      if (materialFile && materialName) {
-        try {
-          // Make sure to use the UUID created in createCourse
-          await uploadMaterial(COURSE_ID)
-        } catch (uploadErr) {
-          console.error("Material upload failed:", uploadErr)
-          setMaterialUploadFailed(true)
-        }
-      }
+      // Course has already been created in step 1
+      // Material has already been uploaded in step 2 (if any)
+      // Assignment questions have already been generated in step 3
       
+      // At this point, we're just finalizing everything
       
       // Success - move to confirmation step
       setIsCompleted(true)
@@ -307,6 +387,14 @@ export function AddCourseModal({ isOpen, onClose, userId, onCourseCreated }: Add
     setMaterialName("")
     setMaterialType("textbook")
     setMaterialFile(null)
+    setAssignmentName("")
+    setAssignmentDate("")
+    setAssignmentTime("")
+    setAssignmentDescription("")
+    setAssignmentFile(null)
+    setIsGeneratingQuestions(false)
+    setQuestionsGenerated(false)
+    setGeneratedQuestions([])
     setAssignments([])
     setIsCompleted(false)
     setError(null)
@@ -316,6 +404,91 @@ export function AddCourseModal({ isOpen, onClose, userId, onCourseCreated }: Add
     setMaterialUploadError(null)
     setCreatedCourseId("")
     setCourseCreated(false)
+  }
+
+  const generateQuestions = async (): Promise<boolean> => {
+    if (!assignmentFile || !assignmentName || !COURSE_ID) return false
+
+    setIsGeneratingQuestions(true)
+    setError(null)
+
+    try {
+      // Create a FormData object
+      const formData = new FormData()
+      
+      // Add the file
+      formData.append('pdf', assignmentFile, assignmentFile.name)
+      console.log("Generating questions for assignment:", assignmentName)
+      
+      // Add the JSON data as a string
+      const assignmentData = JSON.stringify({
+        name: assignmentName,
+        due_date: assignmentDate && assignmentTime ? `${assignmentDate}T${assignmentTime}:00` : undefined,
+        description: assignmentDescription,
+        course_id: COURSE_ID
+      })
+      
+      formData.append('data', assignmentData)
+      
+      // Send the request
+      const response = await fetch('https://yhqxnhbpxjslmiwtfkez.supabase.co/functions/v1/generate_questions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${supabaseAnonKey}`
+        },
+        body: formData
+      })
+      
+      // Try to get response text for better error reporting
+      const responseText = await response.text()
+      console.log("Question generation response:", responseText)
+      
+      if (!response.ok) {
+        let errorMessage = 'Failed to generate questions'
+        try {
+          const errorData = JSON.parse(responseText)
+          errorMessage = errorData.message || errorMessage
+        } catch (e) {
+          // If we can't parse JSON, use the response text
+          errorMessage = responseText || errorMessage
+        }
+        throw new Error(errorMessage)
+      }
+      
+      // Parse the response and extract the problems
+      try {
+        const data = JSON.parse(responseText)
+        if (data.problems && Array.isArray(data.problems)) {
+          setGeneratedQuestions(data.problems)
+          console.log("Questions generated successfully:", data.problems)
+        } else {
+          throw new Error("No questions found in the response")
+        }
+      } catch (parseError) {
+        console.error("Error parsing question response:", parseError)
+        throw new Error("Failed to parse generated questions")
+      }
+      
+      // Success
+      setQuestionsGenerated(true)
+      return true
+    } catch (err: any) {
+      console.error("Error generating questions:", err)
+      setError(err.message || "Failed to generate questions. Please try again.")
+      return false
+    } finally {
+      setIsGeneratingQuestions(false)
+    }
+  }
+
+  const handleQuestionEdit = (index: number, newText: string) => {
+    const updatedQuestions = [...generatedQuestions]
+    updatedQuestions[index] = newText
+    setGeneratedQuestions(updatedQuestions)
+  }
+
+  const handleQuestionRemove = (index: number) => {
+    setGeneratedQuestions(generatedQuestions.filter((_, i) => i !== index))
   }
 
   return (
@@ -456,7 +629,7 @@ export function AddCourseModal({ isOpen, onClose, userId, onCourseCreated }: Add
                         id="materialFile"
                         type="file"
                         accept=".pdf"
-                        onChange={handleFileChange}
+                        onChange={(e) => handleFileChange(e, 'material')}
                         className="flex-grow"
                       />
                       <p className="text-xs text-muted-foreground mt-1">
@@ -473,53 +646,161 @@ export function AddCourseModal({ isOpen, onClose, userId, onCourseCreated }: Add
           )}
           
           {step === 3 && (
-            <div className="grid gap-4 py-4 max-h-[300px] overflow-y-auto">
-              {assignments.length === 0 ? (
-                <div className="text-center p-6 border border-dashed rounded-md">
-                  <p className="text-gray-500 mb-2">No assignments added yet.</p>
-                  <p className="text-gray-500 text-sm">You can add assignments now or later from the course page.</p>
+            <div className="grid gap-4 py-4">
+              {materialUploaded && (
+                <div className="bg-green-50 border border-green-200 text-green-700 p-3 rounded-md flex items-start mb-2">
+                  <CheckCircle className="h-5 w-5 mr-2 mt-0.5 flex-shrink-0" />
+                  <p className="text-sm">Material "{materialName}" uploaded successfully! Now you can create an assignment.</p>
                 </div>
-              ) : (
-                assignments.map((assignment, index) => (
-                  <div key={index} className="grid grid-cols-1 gap-3 p-3 border rounded">
-                    <div className="flex justify-between">
-                      <Input
-                        value={assignment.name}
-                        onChange={(e) => handleAssignmentChange(index, "name", e.target.value)}
-                        placeholder="Assignment name"
-                        className="flex-grow mr-2"
-                      />
-                      <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveAssignment(index)}>
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
+              )}
+              <div className="border rounded-md p-4">
+                <div className="grid grid-cols-1 gap-4">
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="assignmentName" className="text-right">
+                      Assignment Name
+                    </Label>
                     <Input
-                      type="date"
-                      value={assignment.dueDate || ""}
-                      onChange={(e) => handleAssignmentChange(index, "dueDate", e.target.value)}
-                      placeholder="Due date"
-                    />
-                    <Input
-                      value={assignment.description || ""}
-                      onChange={(e) => handleAssignmentChange(index, "description", e.target.value)}
-                      placeholder="Description"
+                      id="assignmentName"
+                      value={assignmentName}
+                      onChange={(e) => setAssignmentName(e.target.value)}
+                      className="col-span-3"
+                      placeholder="e.g., Homework 1"
                     />
                   </div>
-                ))
+                  
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="assignmentDate" className="text-right">
+                      Due Date
+                    </Label>
+                    <Input
+                      id="assignmentDate"
+                      type="date"
+                      value={assignmentDate}
+                      onChange={(e) => setAssignmentDate(e.target.value)}
+                      className="col-span-3"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="assignmentTime" className="text-right">
+                      Due Time
+                    </Label>
+                    <Input
+                      id="assignmentTime"
+                      type="time"
+                      value={assignmentTime}
+                      onChange={(e) => setAssignmentTime(e.target.value)}
+                      className="col-span-3"
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="assignmentDescription" className="text-right">
+                      Description
+                    </Label>
+                    <Input
+                      id="assignmentDescription"
+                      value={assignmentDescription}
+                      onChange={(e) => setAssignmentDescription(e.target.value)}
+                      className="col-span-3"
+                      placeholder="Brief assignment description"
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="assignmentFile" className="text-right">
+                      Assignment PDF
+                    </Label>
+                    <div className="col-span-3">
+                      <Input
+                        id="assignmentFile"
+                        type="file"
+                        accept=".pdf"
+                        onChange={(e) => handleFileChange(e, 'assignment')}
+                        className="flex-grow"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Upload your problem set or assignment details (max 5MB)
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              {!questionsGenerated && (
+                <div className="flex justify-center mt-4">
+                  <Button 
+                    type="button" 
+                    onClick={generateQuestions}
+                    disabled={isGeneratingQuestions || !assignmentFile || !assignmentName}
+                    className="w-full"
+                  >
+                    {isGeneratingQuestions ? (
+                      <>
+                        <span className="animate-spin mr-2">⟳</span> 
+                        Generating Questions...
+                      </>
+                    ) : (
+                      "Generate Questions"
+                    )}
+                  </Button>
+                </div>
               )}
-              <Button type="button" onClick={handleAddAssignment} variant="outline">
-                <PlusCircle className="mr-2 h-4 w-4" /> Add Assignment
-              </Button>
+              
+              {questionsGenerated && generatedQuestions.length > 0 && (
+                <div className="mt-4">
+                  <h3 className="text-lg font-medium mb-2">Generated Questions</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    You can edit or remove questions before finalizing the assignment.
+                  </p>
+                  
+                  <div className="space-y-4 max-h-[300px] overflow-y-auto border rounded-md p-4">
+                    {generatedQuestions.map((question, index) => (
+                      <div key={index} className="border rounded-md p-3 bg-background">
+                        <div className="flex justify-between items-start mb-2">
+                          <h4 className="font-medium">Question {index + 1}</h4>
+                          <Button 
+                            type="button" 
+                            variant="ghost" 
+                            size="icon" 
+                            onClick={() => handleQuestionRemove(index)}
+                            className="h-8 w-8 text-destructive"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        <textarea
+                          value={question}
+                          onChange={(e) => handleQuestionEdit(index, e.target.value)}
+                          className="w-full min-h-[100px] p-2 border rounded-md text-sm"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {questionsGenerated && generatedQuestions.length === 0 && (
+                <div className="bg-amber-50 border border-amber-200 text-amber-700 p-3 rounded-md flex items-start mt-4">
+                  <AlertCircle className="h-5 w-5 mr-2 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="font-medium">All questions removed</p>
+                    <p className="text-sm">You have removed all generated questions. Click "Generate Questions" again or add questions manually.</p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
           
           {step === 4 && (
             <div className="py-8 text-center">
-              {isCreating || uploadingMaterial ? (
+              {isCreating || uploadingMaterial || isGeneratingQuestions ? (
                 <div className="space-y-4">
                   <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary mx-auto"></div>
                   <h3 className="text-xl font-medium">
-                    {isCreating ? "Creating Course..." : "Uploading Material..."}
+                    {isCreating ? "Creating Course..." : 
+                     uploadingMaterial ? "Uploading Material..." : 
+                     "Generating Questions..."}
                   </h3>
                   <p className="text-gray-500">Please wait while we set up your course.</p>
                 </div>
@@ -530,6 +811,7 @@ export function AddCourseModal({ isOpen, onClose, userId, onCourseCreated }: Add
                   <p className="text-gray-500">
                     Your new course "{courseName}" has been created.
                   </p>
+                  
                   {materialFile && materialUploaded && (
                     <div className="bg-green-50 border border-green-200 rounded-md p-3 text-green-700 text-sm mt-4">
                       <div className="flex items-center">
@@ -538,6 +820,7 @@ export function AddCourseModal({ isOpen, onClose, userId, onCourseCreated }: Add
                       </div>
                     </div>
                   )}
+                  
                   {materialFile && materialUploadFailed && (
                     <div className="bg-amber-50 border border-amber-200 rounded-md p-3 text-amber-700 text-sm mt-4">
                       <div className="flex items-start">
@@ -548,6 +831,17 @@ export function AddCourseModal({ isOpen, onClose, userId, onCourseCreated }: Add
                           {materialUploadError && <p className="mt-1">{materialUploadError}</p>}
                           <p className="mt-1">You can try uploading the material again from the course page.</p>
                         </div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {questionsGenerated && assignmentName && (
+                    <div className="bg-green-50 border border-green-200 rounded-md p-3 text-green-700 text-sm mt-4">
+                      <div className="flex items-center">
+                        <CheckCircle className="h-4 w-4 mr-2" />
+                        <span>
+                          Assignment "{assignmentName}" has been created with {generatedQuestions.length} {generatedQuestions.length === 1 ? 'question' : 'questions'}.
+                        </span>
                       </div>
                     </div>
                   )}
@@ -573,8 +867,16 @@ export function AddCourseModal({ isOpen, onClose, userId, onCourseCreated }: Add
                     {step === 1 && isCreating ? "Creating..." : "Next"}
                   </Button>
                 ) : (
-                  <Button type="submit" disabled={isCreating || uploadingMaterial}>
-                    {isCreating || uploadingMaterial ? "Processing..." : "Finish"}
+                  <Button 
+                    type="button" 
+                    onClick={handleNextStep}
+                    disabled={!questionsGenerated || generatedQuestions.length === 0 || isCreating}
+                  >
+                    {isCreating 
+                      ? "Creating Assignment..." 
+                      : (questionsGenerated && generatedQuestions.length > 0) 
+                        ? "Next" 
+                        : "Please Generate Questions First"}
                   </Button>
                 )}
               </>
