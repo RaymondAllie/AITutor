@@ -39,11 +39,20 @@ export default function Educator() {
       // Fetch user data
       const { data: userData, error: userError } = await supabase
         .from('users')
-        .select('id, name, email')
+        .select('id, name, email, role')
         .eq('id', educatorId)
         .single()
 
       if (userError) throw userError
+      
+      // Check if the user has the educator role
+      if (userData.role !== 'educator') {
+        console.error('Unauthorized: User is not an educator')
+        // Redirect to login page
+        window.location.href = '/educator/login?error=unauthorized'
+        return
+      }
+      
       setUser(userData)
 
       // Fetch user's courses via join table

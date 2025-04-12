@@ -2,13 +2,13 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { ArrowLeft } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
 export default function StudentLogin() {
@@ -18,6 +18,15 @@ export default function StudentLogin() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Check for error parameters in the URL
+  useEffect(() => {
+    const errorParam = searchParams.get('error');
+    if (errorParam === 'unauthorized') {
+      setError('You do not have access to the educator area. Please log in as a student.');
+    }
+  }, [searchParams]);
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,8 +45,23 @@ export default function StudentLogin() {
       }
       
       if (data?.user) {
-        // Store user type (student) in custom metadata or separate table if needed
-        // For now, we'll just navigate to the student dashboard
+        // Get the user's role from the database
+        const { data: userData, error: roleError } = await supabase
+          .from('users')
+          .select('role')
+          .eq('id', data.user.id)
+          .single();
+          
+        if (roleError) {
+          throw roleError;
+        }
+        
+        // Check if the user has the student role
+        if (userData?.role !== 'student') {
+          throw new Error('You do not have student access. Please use the educator login page.');
+        }
+        
+        // Navigate to the student dashboard
         router.push(`/student/${data.user.id}`);
       }
     } catch (err: any) {

@@ -134,7 +134,7 @@ export function StudentSidebar() {
             {profileMenuOpen && (
               <div className="absolute bottom-full mb-2 left-0 right-0 bg-background rounded-md shadow-md border border-border z-50">
                 <div className="p-2 space-y-1">
-                  <Link href="/settings" className="flex items-center px-2 py-1.5 text-sm rounded-md hover:bg-accent">
+                  <Link href={`/student/${studentId}/settings`} className="flex items-center px-2 py-1.5 text-sm rounded-md hover:bg-accent">
                     <Settings className="mr-2 h-4 w-4" />
                     Settings
                   </Link>

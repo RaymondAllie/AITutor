@@ -35,14 +35,48 @@ export async function middleware(request: NextRequest) {
   const isEducatorRoute = path.startsWith('/educator') && !path.startsWith('/educator/login') && !path.startsWith('/educator/register');
   const isStudentRoute = path.startsWith('/student') && !path.startsWith('/student/login') && !path.startsWith('/student/register');
   
+  // If no user and trying to access protected route, redirect to login
   if ((isEducatorRoute || isStudentRoute) && !user) {
-    // If no user and trying to access protected route, redirect to login
     const redirectUrl = isEducatorRoute ? '/educator/login' : '/student/login';
     return NextResponse.redirect(new URL(redirectUrl, request.url));
   }
   
-  // In a real application, you would check if the user has the correct role
-  // (educator or student) before allowing access to specific routes
+  // If user exists, check their role for educator/student specific routes
+  if (user) {
+    try {
+      // Get the user's role from the database
+      const { data: userData, error } = await supabase
+        .from('users')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+      
+      if (error) {
+        console.error('Error fetching user role:', error);
+        // If there's an error, redirect to the appropriate login page
+        const loginUrl = isEducatorRoute ? '/educator/login' : '/student/login';
+        return NextResponse.redirect(new URL(loginUrl, request.url));
+      }
+      
+      const userRole = userData?.role;
+      
+      // Check if user is accessing the correct route for their role
+      if (isEducatorRoute && userRole !== 'educator') {
+        // Educator route but user is not an educator
+        return NextResponse.redirect(new URL('/student/login?error=unauthorized', request.url));
+      }
+      
+      if (isStudentRoute && userRole !== 'student') {
+        // Student route but user is not a student
+        return NextResponse.redirect(new URL('/educator/login?error=unauthorized', request.url));
+      }
+    } catch (err) {
+      console.error('Error in middleware role check:', err);
+      // If there's an exception, redirect to the appropriate login page
+      const loginUrl = isEducatorRoute ? '/educator/login' : '/student/login';
+      return NextResponse.redirect(new URL(loginUrl, request.url));
+    }
+  }
   
   return response;
 }

@@ -40,11 +40,20 @@ export default function StudentDashboard() {
       // Fetch user data
       const { data: userData, error: userError } = await supabase
         .from('users')
-        .select('id, name, email')
+        .select('id, name, email, role')
         .eq('id', studentId)
         .single()
 
       if (userError) throw userError
+      
+      // Check if the user has the student role
+      if (userData.role !== 'student') {
+        console.error('Unauthorized: User is not a student')
+        // Redirect to login page
+        window.location.href = '/student/login?error=unauthorized'
+        return
+      }
+      
       setUser(userData)
 
       // Fetch user's courses via join table

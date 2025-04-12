@@ -8,83 +8,140 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { PlusCircle, Trash2, Mail, User, BookOpen, Search, ArrowUpDown } from "lucide-react"
+import { PlusCircle, Trash2, Mail, User, BookOpen, Search, ArrowUpDown, AlertTriangle } from "lucide-react"
+import { supabase } from "@/lib/supabase"
+import { toast } from "sonner"
 
-// Mock student data - in a real app, this would be fetched from Supabase
-const mockStudents = [
-  {
-    id: "s1",
-    name: "Alex Johnson",
-    email: "alex.johnson@example.com",
-    courses: ["CS101", "CS201"]
-  },
-  {
-    id: "s2",
-    name: "Jamie Smith",
-    email: "jamie.smith@example.com",
-    courses: ["CS101"]
-  },
-  {
-    id: "s3",
-    name: "Taylor Williams",
-    email: "taylor.williams@example.com",
-    courses: ["CS201", "CS301"]
-  },
-  {
-    id: "s4",
-    name: "Morgan Brown",
-    email: "morgan.brown@example.com",
-    courses: ["CS301"]
-  },
-  {
-    id: "s5",
-    name: "Riley Davis",
-    email: "riley.davis@example.com",
-    courses: ["CS101", "CS301"]
-  }
-]
+// Define interfaces for our data
+interface Course {
+  id: string
+  name: string
+  course_code: string
+}
+
+interface Student {
+  id: string
+  name: string
+  email: string
+  courses: Course[]
+}
 
 export default function StudentsPage() {
   const params = useParams()
   const { educatorId } = params
   
-  const [students, setStudents] = useState<typeof mockStudents>([])
-  const [filteredStudents, setFilteredStudents] = useState<typeof mockStudents>([])
+  const [students, setStudents] = useState<Student[]>([])
+  const [filteredStudents, setFilteredStudents] = useState<Student[]>([])
   const [loading, setLoading] = useState(true)
   const [isAddStudentModalOpen, setIsAddStudentModalOpen] = useState(false)
   const [newStudentEmail, setNewStudentEmail] = useState("")
-  const [newStudentName, setNewStudentName] = useState("")
-  const [newStudentCourses, setNewStudentCourses] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
+  const [error, setError] = useState<string | null>(null)
   const [sortConfig, setSortConfig] = useState<{
     key: string;
     direction: 'ascending' | 'descending';
   } | null>(null)
   
   useEffect(() => {
-    // Simulate fetching student data
-    setTimeout(() => {
-      // In a real app, this would be a fetch from Supabase
-      /*
-      const fetchStudents = async () => {
-        const { data, error } = await supabaseClient
-          .from('students')
-          .select('*')
-          .eq('educator_id', educatorId)
-          
-        if (data) {
-          setStudents(data)
-          setFilteredStudents(data)
-        }
-      }
-      fetchStudents()
-      */
+    const fetchStudents = async () => {
+      setLoading(true)
+      setError(null)
       
-      // Instead, we're using mock data
-      setStudents(mockStudents)
-      setFilteredStudents(mockStudents)
-      setLoading(false)
-    }, 500)
+      try {
+        // 1. Get all courses the educator teaches (from users_courses)
+        const { data: educatorCourses, error: coursesError } = await supabase
+          .from('users_courses')
+          .select('course_id')
+          .eq('user_id', educatorId)
+          
+        if (coursesError) throw coursesError
+        
+        if (!educatorCourses || educatorCourses.length === 0) {
+          setStudents([])
+          setFilteredStudents([])
+          setLoading(false)
+          return
+        }
+        
+        const courseIds = educatorCourses.map(course => course.course_id)
+        
+        // 2. Get course details for educator's courses
+        const { data: coursesData, error: coursesDataError } = await supabase
+          .from('courses')
+          .select('id, name, course_code')
+          .in('id', courseIds)
+          
+        if (coursesDataError) throw coursesDataError
+        
+        const courses = coursesData || []
+        
+        // 3. Get all student IDs enrolled in those courses (from users_courses)
+        const { data: studentEnrollments, error: enrollmentsError } = await supabase
+          .from('users_courses')
+          .select('user_id, course_id')
+          .in('course_id', courseIds)
+          
+        if (enrollmentsError) throw enrollmentsError
+        
+        if (!studentEnrollments || studentEnrollments.length === 0) {
+          setStudents([])
+          setFilteredStudents([])
+          setLoading(false)
+          return
+        }
+        
+        // Get unique student IDs
+        const studentIds = [...new Set(studentEnrollments.map(enrollment => enrollment.user_id))]
+        
+        // Only include students (not other educators)
+        const { data: studentUsers, error: usersError } = await supabase
+          .from('users')
+          .select('id, name, email, role')
+          .in('id', studentIds)
+          .eq('role', 'student')
+          
+        if (usersError) throw usersError
+        
+        // Map student enrollments to courses
+        const studentCourseMap: Record<string, string[]> = {}
+        
+        studentEnrollments.forEach(enrollment => {
+          if (!studentCourseMap[enrollment.user_id]) {
+            studentCourseMap[enrollment.user_id] = []
+          }
+          studentCourseMap[enrollment.user_id].push(enrollment.course_id)
+        })
+        
+        // Create final student objects with course information
+        const studentData = (studentUsers || []).map(student => {
+          const studentCourseIds = studentCourseMap[student.id] || []
+          
+          // Get course details for each course ID
+          const studentCourses = courses.filter(course => 
+            studentCourseIds.includes(course.id)
+          )
+          
+          return {
+            id: student.id,
+            name: student.name,
+            email: student.email,
+            courses: studentCourses
+          }
+        })
+        
+        setStudents(studentData)
+        setFilteredStudents(studentData)
+      } catch (err: any) {
+        console.error("Error fetching students:", err)
+        setError(err.message || "Failed to load students")
+      } finally {
+        setLoading(false)
+      }
+    }
+    
+    if (educatorId) {
+      fetchStudents()
+    }
   }, [educatorId])
   
   useEffect(() => {
@@ -92,40 +149,132 @@ export default function StudentsPage() {
     const filtered = students.filter(student => 
       student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       student.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      student.courses.some(course => course.toLowerCase().includes(searchQuery.toLowerCase()))
+      student.courses.some(course => 
+        course.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        course.course_code.toLowerCase().includes(searchQuery.toLowerCase())
+      )
     )
     setFilteredStudents(filtered)
   }, [searchQuery, students])
   
-  const handleAddStudent = () => {
-    if (!newStudentEmail || !newStudentName) return
+  const handleAddStudent = async () => {
+    if (!newStudentEmail) return
     
-    // In a real app, this would be a POST to Supabase
-    const newStudent = {
-      id: `s${students.length + 1}`,
-      name: newStudentName,
-      email: newStudentEmail,
-      courses: newStudentCourses ? newStudentCourses.split(',').map(course => course.trim()) : []
+    try {
+      // Find user by email
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('id, name, email, role')
+        .eq('email', newStudentEmail)
+        .eq('role', 'student')
+        .single()
+        
+      if (userError) {
+        if (userError.code === 'PGRST116') {
+          toast.error("No student found with that email address")
+        } else {
+          throw userError
+        }
+        return
+      }
+      
+      // Get educator's courses
+      const { data: educatorCourses, error: coursesError } = await supabase
+        .from('users_courses')
+        .select('course_id')
+        .eq('user_id', educatorId)
+        
+      if (coursesError) throw coursesError
+      
+      if (!educatorCourses || educatorCourses.length === 0) {
+        toast.error("You don't have any courses to add students to")
+        return
+      }
+      
+      const courseId = educatorCourses[0].course_id // Add to first course by default
+      
+      // Check if student is already enrolled
+      const { data: existingEnrollment, error: enrollmentError } = await supabase
+        .from('users_courses')
+        .select('*')
+        .eq('user_id', userData.id)
+        .eq('course_id', courseId)
+        
+      if (enrollmentError) throw enrollmentError
+      
+      if (existingEnrollment && existingEnrollment.length > 0) {
+        toast.error("This student is already enrolled in your course")
+        return
+      }
+      
+      // Add student to course
+      const { error: addError } = await supabase
+        .from('users_courses')
+        .insert([
+          { user_id: userData.id, course_id: courseId }
+        ])
+        
+      if (addError) throw addError
+      
+      toast.success(`${userData.name} has been added to your course`)
+      
+      // Get course details
+      const { data: courseData, error: courseDetailsError } = await supabase
+        .from('courses')
+        .select('id, name, course_code')
+        .eq('id', courseId)
+        .single()
+        
+      if (courseDetailsError) throw courseDetailsError
+      
+      // Add student to local state
+      const newStudent: Student = {
+        id: userData.id,
+        name: userData.name,
+        email: userData.email,
+        courses: [courseData]
+      }
+      
+      setStudents(prevStudents => [...prevStudents, newStudent])
+      setFilteredStudents(prevStudents => [...prevStudents, newStudent])
+      setNewStudentEmail("")
+      setIsAddStudentModalOpen(false)
+    } catch (err: any) {
+      console.error("Error adding student:", err)
+      toast.error("Failed to add student: " + (err.message || "Unknown error"))
     }
-    
-    const updatedStudents = [...students, newStudent]
-    setStudents(updatedStudents)
-    setFilteredStudents(updatedStudents)
-    setNewStudentEmail("")
-    setNewStudentName("")
-    setNewStudentCourses("")
-    setIsAddStudentModalOpen(false)
   }
   
-  const handleDeleteStudent = (studentId: string) => {
-    // In a real app, this would be a DELETE to Supabase
-    const updatedStudents = students.filter(student => student.id !== studentId)
-    setStudents(updatedStudents)
-    setFilteredStudents(updatedStudents.filter(student => 
-      student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      student.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      student.courses.some(course => course.toLowerCase().includes(searchQuery.toLowerCase()))
-    ))
+  const handleDeleteStudent = async (studentId: string) => {
+    try {
+      // Get educator's courses
+      const { data: educatorCourses, error: coursesError } = await supabase
+        .from('users_courses')
+        .select('course_id')
+        .eq('user_id', educatorId)
+        
+      if (coursesError) throw coursesError
+      
+      const courseIds = educatorCourses?.map(course => course.course_id) || []
+      
+      // Remove student from all educator's courses
+      const { error: deleteError } = await supabase
+        .from('users_courses')
+        .delete()
+        .eq('user_id', studentId)
+        .in('course_id', courseIds)
+        
+      if (deleteError) throw deleteError
+      
+      // Update local state
+      setStudents(prevStudents => prevStudents.filter(student => student.id !== studentId))
+      setFilteredStudents(prevStudents => prevStudents.filter(student => student.id !== studentId))
+      
+      toast.success("Student has been removed from your courses")
+    } catch (err: any) {
+      console.error("Error removing student:", err)
+      toast.error("Failed to remove student: " + (err.message || "Unknown error"))
+    }
   }
   
   const requestSort = (key: string) => {
@@ -166,6 +315,17 @@ export default function StudentsPage() {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    )
+  }
+  
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen">
+        <AlertTriangle className="h-12 w-12 text-red-500 mb-4" />
+        <h2 className="text-2xl font-bold mb-2">Error Loading Students</h2>
+        <p className="text-muted-foreground mb-4">{error}</p>
+        <Button onClick={() => window.location.reload()}>Try Again</Button>
       </div>
     )
   }
@@ -243,7 +403,7 @@ export default function StudentsPage() {
                 <BookOpen className="mr-2 h-4 w-4 text-gray-500" />
                 <span className="text-sm">
                   {student.courses.length > 0 
-                    ? student.courses.join(", ")
+                    ? student.courses.map(c => c.course_code).join(", ")
                     : 'No courses'}
                 </span>
               </div>
@@ -273,24 +433,12 @@ export default function StudentsPage() {
       <Dialog open={isAddStudentModalOpen} onOpenChange={setIsAddStudentModalOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>Add New Student</DialogTitle>
+            <DialogTitle>Add Student to Your Course</DialogTitle>
             <DialogDescription>
-              Enter the student's information to add them to your roster.
+              Enter the student's email address to add them to your course. They must already have a student account.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="name" className="text-right">
-                Name
-              </Label>
-              <Input
-                id="name"
-                value={newStudentName}
-                onChange={(e) => setNewStudentName(e.target.value)}
-                className="col-span-3"
-                placeholder="Student's full name"
-              />
-            </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="email" className="text-right">
                 Email
@@ -302,18 +450,6 @@ export default function StudentsPage() {
                 onChange={(e) => setNewStudentEmail(e.target.value)}
                 className="col-span-3"
                 placeholder="student@example.com"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="courses" className="text-right">
-                Courses
-              </Label>
-              <Input
-                id="courses"
-                value={newStudentCourses}
-                onChange={(e) => setNewStudentCourses(e.target.value)}
-                className="col-span-3"
-                placeholder="Enter course codes separated by commas"
               />
             </div>
           </div>
