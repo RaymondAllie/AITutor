@@ -124,30 +124,39 @@ export default function AssignmentPage() {
         
         console.log("Found course:", courseData);
         
-        // 2. Fetch the assignment
+        // 2. First get assignments for this course via join table
+        const { data: courseAssignmentLinks, error: courseAssignmentLinksError } = await supabase
+          .from('courses_assignments')
+          .select('assignment_id')
+          .eq('course_id', courseData.id);
+        
+        if (courseAssignmentLinksError) {
+          console.error("Error fetching course assignments:", courseAssignmentLinksError);
+          throw new Error(`Course assignments not found: ${courseAssignmentLinksError.message}`);
+        }
+        
+        if (!courseAssignmentLinks || courseAssignmentLinks.length === 0) {
+          throw new Error("No assignments found for this course");
+        }
+        
+        // Get the assignment IDs from the join table
+        const assignmentIds = courseAssignmentLinks.map(ca => ca.assignment_id);
+        
+        // 3. Fetch the assignment by name but only from the ones that belong to this course
         const { data: assignmentData, error: assignmentError } = await supabase
           .from('assignments')
           .select('*')
           .ilike('name', formattedAssignmentSlug)
+          .in('id', assignmentIds)
           .single();
           
         if (assignmentError) {
           console.error("Error fetching assignment:", assignmentError);
-          throw new Error(`Assignment not found: ${assignmentError.message}`);
+          throw new Error(`Assignment not found in this course: ${assignmentError.message}`);
         }
-        if (!assignmentData) throw new Error("Assignment not found");
+        if (!assignmentData) throw new Error("Assignment not found in this course");
         
         console.log("Found assignment:", assignmentData);
-        
-        // 3. Check if this assignment belongs to this course through the join table
-        const { data: coursesAssignmentsData, error: coursesAssignmentsError } = await supabase
-          .from('courses_assignments')
-          .select('*')
-          .eq('course_id', courseData.id)
-          .eq('assignment_id', assignmentData.id);
-          
-        if (coursesAssignmentsError) throw coursesAssignmentsError;
-        if (!coursesAssignmentsData || coursesAssignmentsData.length === 0) throw new Error("Assignment not found in this course");
         
         // 4. Fetch materials for this assignment
         let materials: Material[] = [];
@@ -216,18 +225,18 @@ export default function AssignmentPage() {
         // 7. Check if there's a next assignment in this course
         let nextAssignment = undefined;
         
-        const { data: courseAssignments, error: courseAssignmentsError } = await supabase
+        const { data: assignmentOrder, error: assignmentOrderError } = await supabase
           .from('courses_assignments')
           .select('assignment_id')
           .eq('course_id', courseData.id)
           .order('created_at', { ascending: true });
         
-        if (!courseAssignmentsError && courseAssignments) {
-          const assignmentIds = courseAssignments.map(ca => ca.assignment_id);
-          const currentIndex = assignmentIds.indexOf(assignmentData.id);
+        if (!assignmentOrderError && assignmentOrder) {
+          const orderedAssignmentIds = assignmentOrder.map(ca => ca.assignment_id);
+          const currentIndex = orderedAssignmentIds.indexOf(assignmentData.id);
           
-          if (currentIndex >= 0 && currentIndex < assignmentIds.length - 1) {
-            const nextAssignmentId = assignmentIds[currentIndex + 1];
+          if (currentIndex >= 0 && currentIndex < orderedAssignmentIds.length - 1) {
+            const nextAssignmentId = orderedAssignmentIds[currentIndex + 1];
             
             const { data: nextAssignmentData } = await supabase
               .from('assignments')
@@ -373,31 +382,40 @@ export default function AssignmentPage() {
   
   // Mark current question as completed
   const markAsCompleted = async () => {
+    // TODO ADD EDGE FUNCTION & DB TO SAVE PROGRESS
     if (!assignment || !currentQuestion || completedQuestions.includes(currentQuestion.id)) return;
     
-    try {
-      // Save progress to Supabase
-      const { error } = await supabase
-        .from('student_progress')
-        .upsert({
-          student_id: studentId as string,
-          assignment_id: assignment.id,
-          problem_id: currentQuestion.id,
-          completed: true,
-          updated_at: new Date().toISOString()
-        });
+    // Temporarily keeping this local without saving to database
+    console.log("Would save progress to database:", {
+      student_id: studentId as string,
+      assignment_id: assignment.id,
+      problem_id: currentQuestion.id,
+      completed: true
+    });
+    
+    // Just update local state for now
+    setCompletedQuestions(prev => [...prev, currentQuestion.id]);
+    
+    // Add a message to indicate completion
+    const completionMessage: Message = {
+      role: 'system',
+      content: `You've marked question ${currentQuestionIndex + 1} as completed.`,
+      timestamp: new Date()
+    };
+    setMessages(prev => [...prev, completionMessage]);
+    
+    // If there are more questions, move to the next one
+    if (currentQuestionIndex < assignment.questions.length - 1) {
+      goToNextQuestion();
+    } else {
+      // Check if all questions are now completed
+      const allCompleted = assignment.questions.every(q => 
+        completedQuestions.includes(q.id) || q.id === currentQuestion.id
+      );
       
-      if (error) throw error;
-      
-      // Update local state
-      setCompletedQuestions(prev => [...prev, currentQuestion.id]);
-      
-      // If there are more questions, move to the next one
-      if (currentQuestionIndex < assignment.questions.length - 1) {
-        goToNextQuestion();
+      if (allCompleted) {
+        setShowCompletionDialog(true);
       }
-    } catch (err) {
-      console.error("Error saving progress:", err);
     }
   };
   
@@ -619,33 +637,6 @@ export default function AssignmentPage() {
         
         {/* Right Column - Resources and Navigation */}
         <div className="lg:col-span-4 space-y-6">
-          {/* Assignment Materials */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Assignment Materials</CardTitle>
-              <CardDescription>
-                Resources to help you complete this assignment
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="divide-y">
-                {assignment.materials.map((material) => (
-                  <div key={material.id} className="px-4 py-3 hover:bg-muted transition-colors flex items-center">
-                    <div className="mr-3">
-                      {getMaterialIcon(material.type)}
-                    </div>
-                    <div className="flex-1">
-                      <div className="font-medium">{material.name}</div>
-                      <div className="text-xs text-gray-500 capitalize">{material.type}</div>
-                    </div>
-                    <Button size="icon" variant="ghost">
-                      <Download className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
           
           {/* All Questions */}
           <Card>

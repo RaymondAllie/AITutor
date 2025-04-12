@@ -55,7 +55,6 @@ export function StudentCourseList({ studentId }: StudentCourseListProps) {
           .from('users_courses')
           .select('course_id')
           .eq('user_id', studentId)
-          .eq('role', 'student')
         
         if (userCoursesError) throw userCoursesError
         

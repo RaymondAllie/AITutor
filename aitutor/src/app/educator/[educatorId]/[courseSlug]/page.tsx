@@ -19,7 +19,8 @@ import {
   Edit,
   Trash2,
   MessageCircle,
-  Plus
+  Plus,
+  Copy
 } from "lucide-react"
 import {
   Dialog,
@@ -35,6 +36,8 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
+
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
 // Define interfaces to match your database schema
 interface Material {
@@ -68,6 +71,7 @@ interface Course {
   instructor_name?: string
   materials: Material[]
   assignments: Assignment[]
+  join_code: string
 }
 
 export default function CoursePage() {
@@ -155,20 +159,71 @@ export default function CoursePage() {
     if (!course || !newMaterial.name) return
     
     try {
-      // Insert into Supabase
-      const { data, error } = await supabase
-        .from('materials')
-        .insert({
-          name: newMaterial.name,
-          type: newMaterial.type,
-          course_id: course.id
-        })
-        .select()
-
-      if (error) throw error
-
+      // Get the file from the input
+      const fileInput = document.getElementById('material-file') as HTMLInputElement
+      const file = fileInput?.files?.[0]
+      
+      // Create a FormData object
+      const formData = new FormData()
+      
+      // Add the file if it exists
+      if (file) {
+        // Check file size (5MB limit)
+        const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB in bytes
+        if (file.size > MAX_FILE_SIZE) {
+          toast.error('File size exceeds 5MB. Please choose a smaller file.')
+          return
+        }
+        
+        // Check file type
+        if (!file.type.includes('pdf')) {
+          toast.error('Only PDF files are supported.')
+          return
+        }
+        
+        // Add the file - 'pdf' must match exactly what the backend expects
+        formData.append('pdf', file, file.name)
+      }
+      
+      // Add the JSON data as a string
+      const materialData = JSON.stringify({
+        name: newMaterial.name,
+        type: newMaterial.type,
+        course_id: course.id
+      })
+      
+      // Add the JSON data as a string value
+      formData.append('data', materialData)
+      
+      // Send the request - Do NOT set the Content-Type header for multipart/form-data
+      const response = await fetch('https://yhqxnhbpxjslmiwtfkez.supabase.co/functions/v1/material_upload', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${supabaseAnonKey}`
+        },
+        body: formData
+      })
+      
+      // Try to get response text for better error reporting
+      const responseText = await response.text()
+      
+      if (!response.ok) {
+        let errorMessage = 'Failed to upload material'
+        try {
+          const errorData = JSON.parse(responseText)
+          errorMessage = errorData.message || errorMessage
+        } catch (e) {
+          // If we can't parse JSON, use the response text
+          errorMessage = responseText || errorMessage
+        }
+        throw new Error(errorMessage)
+      }
+      
+      // Parse the response
+      const data = JSON.parse(responseText)
+      
       // Update local state with the new material
-      const newMaterialWithId = data[0] as Material
+      const newMaterialWithId = data.material as Material
       
       setCourse({
         ...course,
@@ -181,7 +236,7 @@ export default function CoursePage() {
       toast.success("Material added successfully")
     } catch (err: any) {
       console.error("Error adding material:", err)
-      toast.error("Failed to add material")
+      toast.error(err.message || "Failed to add material")
     } finally {
       setNewMaterial({ name: "", type: "resource" })
       setAddMaterialDialogOpen(false)
@@ -518,7 +573,8 @@ export default function CoursePage() {
           ...courseData,
           instructor_name: instructorName,
           materials: materialsData || [],
-          assignments: assignmentsWithProblemCount || []
+          assignments: assignmentsWithProblemCount || [],
+          join_code: courseData.join_code
         }
         
         setCourse(fullCourseData)
@@ -605,7 +661,16 @@ export default function CoursePage() {
         <div className="flex items-center space-x-2 mt-2 text-gray-600">
           <span className="font-medium">{course.course_code}</span>
           <span>•</span>
-          <span>{course.instructor_name || "Instructor"}</span>
+          <div 
+            className="flex items-center gap-2 bg-gray-100 px-3 py-1 rounded-md cursor-pointer hover:bg-gray-200 transition-colors"
+            onClick={() => {
+              navigator.clipboard.writeText(course.join_code);
+              toast.success("Join code copied to clipboard");
+            }}
+          >
+            <span>{course.join_code}</span>
+            <Copy className="h-3.5 w-3.5 text-gray-500" />
+          </div>
         </div>
         <p className="mt-4 text-gray-700">
           {course.description}

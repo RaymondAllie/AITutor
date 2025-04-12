@@ -55,6 +55,20 @@ export default function StudentRegister() {
       }
       
       if (data?.user) {
+        // Store user in the users table with role=student
+        const { error: userInsertError } = await supabase
+          .from('users')
+          .upsert({
+            id: data.user.id,
+            role: 'student',
+            name: name,
+            email: email,
+          }, { onConflict: 'id' });
+        
+        if (userInsertError) {
+          console.error("Error storing user data:", userInsertError);
+        }
+
         // Create a student profile in your database
         const { error: profileError } = await supabase
           .from('student_profiles')

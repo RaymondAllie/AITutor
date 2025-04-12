@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { AlertCircle, CheckCircle } from "lucide-react"
 import { supabase } from "@/lib/supabase"
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
 interface JoinCourseModalProps {
   isOpen: boolean
@@ -37,8 +38,8 @@ export function JoinCourseModal({ isOpen, onClose, userId, onCourseJoined }: Joi
       // Find the course by code
       const { data: courseData, error: courseError } = await supabase
         .from('courses')
-        .select('id, name, course_code')
-        .ilike('course_code', courseCode.trim())
+        .select('id, name, join_code')
+        .ilike('join_code', courseCode)
         .single()
       
       if (courseError) {
@@ -58,15 +59,18 @@ export function JoinCourseModal({ isOpen, onClose, userId, onCourseJoined }: Joi
       }
       
       // Create the relationship in the users_courses join table
-      const { error: joinError } = await supabase
-        .from('users_courses')
-        .insert({
-          user_id: userId,
+      const response = await fetch('https://yhqxnhbpxjslmiwtfkez.supabase.co/functions/v1/add_user_to_course', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseAnonKey}`
+        },
+        body: JSON.stringify({
           course_id: courseData.id,
-          role: 'student'
+          user_id: userId
         })
-      
-      if (joinError) throw joinError
+      }) 
+
       
       // Generate a slug for the course name
       const courseSlug = courseData.name.toLowerCase().replace(/\s+/g, '-')
@@ -117,7 +121,7 @@ export function JoinCourseModal({ isOpen, onClose, userId, onCourseJoined }: Joi
         <DialogHeader>
           <DialogTitle>Join a Course</DialogTitle>
           <DialogDescription>
-            Enter the course code provided by your instructor.
+            Enter the join code provided by your instructor.
           </DialogDescription>
         </DialogHeader>
         
@@ -126,7 +130,7 @@ export function JoinCourseModal({ isOpen, onClose, userId, onCourseJoined }: Joi
             <div className="grid gap-4 py-4">
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="courseCode" className="text-right">
-                  Course Code
+                  Join Code
                 </Label>
                 <Input
                   id="courseCode"
@@ -134,7 +138,7 @@ export function JoinCourseModal({ isOpen, onClose, userId, onCourseJoined }: Joi
                   onChange={(e) => setCourseCode(e.target.value)}
                   className="col-span-3"
                   required
-                  placeholder="e.g., CS101"
+                  placeholder="e.g., SA345"
                 />
               </div>
               

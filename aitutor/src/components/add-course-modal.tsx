@@ -297,6 +297,13 @@ export function AddCourseModal({ isOpen, onClose, userId, onCourseCreated }: Add
 
       let course_id_step_one = crypto.randomUUID()
       COURSE_ID = course_id_step_one
+
+      // Generate a random 5-character alphanumeric join code
+      const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      let join_code = '';
+      for (let i = 0; i < 5; i++) {
+        join_code += characters.charAt(Math.floor(Math.random() * characters.length));
+      }
       
       // Only create course if it hasn't been created yet
       if (!courseCreated) {
@@ -306,7 +313,8 @@ export function AddCourseModal({ isOpen, onClose, userId, onCourseCreated }: Add
           course_code: courseId, // This is the course code entered by user (e.g. CS101)
           description: courseDescription,
           course_id: course_id_step_one, // This is the UUID we generated
-          user_id: userId
+          user_id: userId,
+          join_code: join_code
         }
         
         console.log("Creating course with data:", courseData)
@@ -321,10 +329,27 @@ export function AddCourseModal({ isOpen, onClose, userId, onCourseCreated }: Add
           },
           body: JSON.stringify(courseData)
         })
+
+        const response2 = await fetch('https://yhqxnhbpxjslmiwtfkez.supabase.co/functions/v1/add_user_to_course', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseAnonKey}`
+          },
+          body: JSON.stringify({
+            course_id: course_id_step_one,
+            user_id: userId
+          })
+        }) 
         
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}))
           throw new Error(errorData.message || 'Failed to create course')
+        }
+
+        if (!response2.ok) {
+          const errorData = await response2.json().catch(() => ({}))
+          throw new Error(errorData.message || 'Failed to add user to course')
         }
         
         const result = await response.json()

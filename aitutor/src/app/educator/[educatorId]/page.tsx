@@ -3,13 +3,14 @@
 import { useState, useEffect } from "react"
 import { useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { PlusCircle, Calendar, FileText, Users, Layers } from "lucide-react"
+import { PlusCircle, Calendar, FileText, Users, Layers, Copy } from "lucide-react"
 import { CourseList } from "@/components/course-list"
 import { AddCourseModal } from "@/components/add-course-modal"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { supabase } from "@/lib/supabase"
 import Link from "next/link"
+import { toast } from "sonner"
 interface User {
   id: string
   name: string
@@ -21,6 +22,7 @@ interface Course {
   name: string
   description: string
   course_code: string
+  join_code: string
 }
 
 export default function Educator() {
@@ -59,7 +61,7 @@ export default function Educator() {
         // Fetch the actual course data
         const { data: coursesData, error: coursesDataError } = await supabase
           .from('courses')
-          .select('id, name, description, course_code')
+          .select('id, name, description, course_code, join_code')
           .in('id', courseIds)
 
         if (coursesDataError) throw coursesDataError
@@ -126,6 +128,19 @@ export default function Educator() {
                     </CardHeader>
                     <CardContent>
                       <p className="text-sm">{course.description}</p>
+                      <div className="mt-2 flex items-center">
+                        <div 
+                          className="flex items-center gap-2 bg-gray-100 px-3 py-1.5 rounded-md cursor-pointer hover:bg-gray-200 transition-colors"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            navigator.clipboard.writeText(course.join_code);
+                            toast.success("Join code copied to clipboard");
+                          }}
+                        >
+                          <span className="text-sm font-medium">{course.join_code}</span>
+                          <Copy className="h-3.5 w-3.5 text-gray-500" />
+                        </div>
+                      </div>
                     </CardContent>
                   </Card>
                 </Link>

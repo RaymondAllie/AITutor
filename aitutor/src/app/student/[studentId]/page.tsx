@@ -8,13 +8,19 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { BookOpen, Calendar, Clock, PlusCircle } from "lucide-react"
 import { JoinCourseModal } from "@/components/join-course-modal"
-import { StudentCourseList } from "@/components/student-course-list"
 import { supabase } from "@/lib/supabase"
 
 interface User {
   id: string
   name: string
   email: string
+}
+
+interface Course {
+  id: string
+  name: string
+  description: string
+  course_code: string
 }
 
 export default function StudentDashboard() {
@@ -24,22 +30,48 @@ export default function StudentDashboard() {
   const shouldOpenJoinModal = searchParams.get('join') === 'true'
   const [joinCourseModalOpen, setJoinCourseModalOpen] = useState(shouldOpenJoinModal)
   const [user, setUser] = useState<User | null>(null)
+  const [courses, setCourses] = useState<Course[]>([])
   const [loading, setLoading] = useState(true)
   
-  // Function to load user data
-  const loadUserData = async () => {
+  // Function to load user data and courses, similar to educator page
+  const loadUserAndCourses = async () => {
     setLoading(true)
     try {
-      const { data, error } = await supabase
+      // Fetch user data
+      const { data: userData, error: userError } = await supabase
         .from('users')
         .select('id, name, email')
         .eq('id', studentId)
         .single()
-      
-      if (error) throw error
-      setUser(data)
-    } catch (err) {
-      console.error('Error loading user data:', err)
+
+      if (userError) throw userError
+      setUser(userData)
+
+      // Fetch user's courses via join table
+      const { data: userCourses, error: coursesError } = await supabase
+        .from('users_courses')
+        .select('course_id')
+        .eq('user_id', studentId)
+
+      if (coursesError) throw coursesError
+
+      if (userCourses && userCourses.length > 0) {
+        // Get the course IDs from the join table
+        const courseIds = userCourses.map(uc => uc.course_id)
+
+        // Fetch the actual course data
+        const { data: coursesData, error: coursesDataError } = await supabase
+          .from('courses')
+          .select('id, name, description, course_code')
+          .in('id', courseIds)
+
+        if (coursesDataError) throw coursesDataError
+        setCourses(coursesData || [])
+      } else {
+        setCourses([])
+      }
+    } catch (error) {
+      console.error('Error loading user data:', error)
     } finally {
       setLoading(false)
     }
@@ -47,7 +79,7 @@ export default function StudentDashboard() {
   
   useEffect(() => {
     if (studentId) {
-      loadUserData()
+      loadUserAndCourses()
     }
   }, [studentId])
   
@@ -90,7 +122,35 @@ export default function StudentDashboard() {
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold">Your Courses</h2>
           </div>
-          <StudentCourseList studentId={studentId} />
+          
+          {/* Replace StudentCourseList with direct course rendering */}
+          {courses.length > 0 ? (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {courses.map((course) => (
+                <Link href={`/student/${studentId}/${course.course_code.replace(/\s+/g, '-')}`} key={course.id}>
+                  <Card className="cursor-pointer hover:shadow-md transition-shadow">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-xl">{course.name}</CardTitle>
+                      <p className="text-sm text-muted-foreground">{course.course_code}</p>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-sm">{course.description}</p>
+                    </CardContent>
+                  </Card>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-md border border-dashed p-12 text-center">
+              <h3 className="text-lg font-medium">No courses joined yet</h3>
+              <p className="text-sm text-muted-foreground mt-2">
+                Join a course to get started with your learning journey.
+              </p>
+              <Button onClick={() => setJoinCourseModalOpen(true)} className="mt-4">
+                <PlusCircle className="mr-2 h-4 w-4" /> Join Course
+              </Button>
+            </div>
+          )}
         </TabsContent>
         
         <TabsContent value="archived">
@@ -108,7 +168,7 @@ export default function StudentDashboard() {
         isOpen={joinCourseModalOpen} 
         onClose={() => setJoinCourseModalOpen(false)} 
         userId={studentId}
-        onCourseJoined={loadUserData}
+        onCourseJoined={loadUserAndCourses}
       />
     </div>
   )
