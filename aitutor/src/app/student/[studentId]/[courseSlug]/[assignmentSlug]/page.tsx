@@ -42,7 +42,6 @@ type MessageRole = 'user' | 'assistant' | 'system';
 interface Message {
   role: MessageRole;
   content: string;
-  timestamp: Date;
 }
 
 interface Question {
@@ -80,7 +79,6 @@ interface Assignment {
 export default function AssignmentPage() {
   const params = useParams();
   const { studentId, courseSlug, assignmentSlug } = params;
-  
   // State for the assignment data
   const [assignment, setAssignment] = useState<Assignment | null>(null);
   const [loading, setLoading] = useState(true);
@@ -90,7 +88,7 @@ export default function AssignmentPage() {
   const [inputMessage, setInputMessage] = useState('');
   const [showCompletionDialog, setShowCompletionDialog] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
   
   const currentQuestion = assignment?.questions?.[currentQuestionIndex];
   const progress = assignment ? (completedQuestions.length / assignment.questions.length) * 100 : 0;
@@ -274,14 +272,12 @@ export default function AssignmentPage() {
           const initialMessage: Message = {
             role: 'system',
             content: `Welcome to the ${fullAssignment.name} assignment. Let's start with the first question: "${questions[0].question}"`,
-            timestamp: new Date()
           };
           setMessages([initialMessage]);
         } else {
           const initialMessage: Message = {
             role: 'system',
             content: `Welcome to the ${fullAssignment.name} assignment. This assignment doesn't have any questions yet.`,
-            timestamp: new Date()
           };
           setMessages([initialMessage]);
         }
@@ -302,11 +298,6 @@ export default function AssignmentPage() {
     }
   }, [studentId, courseSlug, assignmentSlug]);
   
-  // Scroll to bottom of chat when messages change
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-  
   // Check if all questions are completed
   useEffect(() => {
     if (allQuestionsCompleted && !showCompletionDialog) {
@@ -314,6 +305,35 @@ export default function AssignmentPage() {
     }
   }, [completedQuestions, allQuestionsCompleted, showCompletionDialog]);
   
+  useEffect(() => {
+    // Only trigger for user messages
+    if (messages.length > 0 && messages[messages.length - 1].role === 'user') {
+      const timeoutId = setTimeout(streamResponse, 1000);
+      
+      // Cleanup function to prevent memory leaks
+      return () => clearTimeout(timeoutId);
+    }
+  }, [messages]);
+
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      const container = chatContainerRef.current;
+      // Use requestAnimationFrame to ensure the scroll happens after the render
+      requestAnimationFrame(() => {
+        container.scrollTo({
+          top: container.scrollHeight,
+          behavior: 'smooth'
+        });
+      });
+    }
+  }, [messages]);
+  
+  useEffect(() => {
+    if (assignment && assignment.questions.length > 0) {
+      setUpQuestion(currentQuestionIndex);
+    }
+  }, [currentQuestionIndex, assignment]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -350,6 +370,51 @@ export default function AssignmentPage() {
     );
   }
   
+  const setUpQuestion = async (index: number) => {
+    if (!currentQuestion) throw new Error("can't load question")
+    
+    const previous = await getMessages(currentQuestion.id)
+    const context = await pullContext(assignment.questions[currentQuestionIndex].question, 1)
+
+    console.log(context);
+
+    setMessages((prev) => [
+      {
+        "role": "system",
+        "content": "You are a helpful AI tutor meant to help a student with any problems they need answered, guide them through solutions, don't tell them the answer, you objective to get students to actually learn the material being presented. Keep your answers short and to the point, dont show emotion and eliminate the fluff"
+      },
+      {
+        "role": "system",
+        "content": `Here is some context to the question you are trying to help the student through, use if applicable:\n\n${context.join("\n\n")}`
+      },
+      {
+        "role": "assistant",
+        "content": `Question ${currentQuestionIndex + 1}: "${assignment.questions[currentQuestionIndex].question}"`
+      },
+      ...previous
+    ])
+  }
+
+  const pullContext = async (text: string, max_matches: number) => {
+    console.log("sending request on text")
+    console.log(text)
+    const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/pull_context`, {
+      method: 'POST', // or 'GET' depending on your function
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`
+      },
+      body: JSON.stringify({
+        course_id: "REPLACE WITH COURSE ID",//   *********** needs to be edited ************
+        text: text,
+        max_matches: max_matches
+      }) // Your function's data payload
+    });
+    console.log(res);
+    const body = await res.json();
+
+    return body.data;
+  }
   // Navigate to previous question
   const goToPreviousQuestion = () => {
     if (currentQuestionIndex > 0 && assignment) {
@@ -359,7 +424,6 @@ export default function AssignmentPage() {
       const newMessage: Message = {
         role: 'system',
         content: `Let's go back to question ${currentQuestionIndex}: "${assignment.questions[currentQuestionIndex - 1].question}"`,
-        timestamp: new Date()
       };
       setMessages([...messages, newMessage]);
     }
@@ -369,14 +433,7 @@ export default function AssignmentPage() {
   const goToNextQuestion = () => {
     if (assignment && currentQuestionIndex < assignment.questions.length - 1) {
       setCurrentQuestionIndex(currentQuestionIndex + 1);
-      
-      // Add system message for the new question
-      const newMessage: Message = {
-        role: 'system',
-        content: `Let's move on to question ${currentQuestionIndex + 2}: "${assignment.questions[currentQuestionIndex + 1].question}"`,
-        timestamp: new Date()
-      };
-      setMessages([...messages, newMessage]);
+      setUpQuestion(currentQuestionIndex);
     }
   };
   
@@ -396,13 +453,6 @@ export default function AssignmentPage() {
     // Just update local state for now
     setCompletedQuestions(prev => [...prev, currentQuestion.id]);
     
-    // Add a message to indicate completion
-    const completionMessage: Message = {
-      role: 'system',
-      content: `You've marked question ${currentQuestionIndex + 1} as completed.`,
-      timestamp: new Date()
-    };
-    setMessages(prev => [...prev, completionMessage]);
     
     // If there are more questions, move to the next one
     if (currentQuestionIndex < assignment.questions.length - 1) {
@@ -418,75 +468,153 @@ export default function AssignmentPage() {
       }
     }
   };
+
   
-  // Show hint for current question
-  const showHint = () => {
-    if (!currentQuestion || !currentQuestion.hint) return;
-    
-    const hintMessage: Message = {
-      role: 'assistant',
-      content: `Hint: ${currentQuestion.hint}`,
-      timestamp: new Date()
-    };
-    setMessages([...messages, hintMessage]);
-  };
+  const saveMessage = async (msg: Message, problem: Question) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/add_message`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`
+        },
+        body: JSON.stringify({
+          problem_id: problem.id,
+          role: msg.role,
+          content: msg.content,
+          time: new Date().toISOString()
+        })
+      });
   
-  // Handle sending a chat message
-  const handleSendMessage = (e: React.FormEvent) => {
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+  
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Error saving message:', error);
+      throw error;
+    }
+  }
+  
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!inputMessage.trim()) return;
-    
-    // Add user message
     const userMessage: Message = {
       role: 'user',
       content: inputMessage,
-      timestamp: new Date()
-    };
-    
-    // Simple mock AI response logic
-    // In a real app, this would call your backend API
-    const mockResponse = () => {
-      const responseContent = generateMockResponse(inputMessage, currentQuestion);
-      
-      const assistantMessage: Message = {
-        role: 'assistant',
-        content: responseContent,
-        timestamp: new Date()
-      };
-      
-      setMessages(prev => [...prev, assistantMessage]);
     };
     
     setMessages(prev => [...prev, userMessage]);
-    setInputMessage('');
-    
-    // Simulate AI response with delay
-    setTimeout(mockResponse, 1000);
-  };
-  
-  // Generate a mock AI response based on the user's message and current question
-  const generateMockResponse = (userMessage: string, question: typeof currentQuestion) => {
-    if (!question) return "I'm not sure about that. Can you try asking something related to the current question?";
-    
-    const userMessageLower = userMessage.toLowerCase();
-    
-    // Simple keyword matching for mock responses
-    if (question.question.toLowerCase().includes('hello world')) {
-      if (userMessageLower.includes('test') || userMessageLower.includes('verify')) {
-        return "Great point! 'Hello World' programs are indeed used to verify that the programming environment is set up correctly. It serves as a simple test to make sure you can write, compile, and run code successfully.";
-      } else if (userMessageLower.includes('first') || userMessageLower.includes('begin')) {
-        return "'Hello World' programs are traditional first programs because they're simple and focus just on producing output - a perfect starting point for learning.";
-      } else if (userMessageLower.includes('print') || userMessageLower.includes('console')) {
-        return "That looks like a good start! The key elements of a 'Hello World' program are the print or output statement and the string 'Hello, World!' to be displayed. Would you like to see examples in different languages?";
-      } else {
-        return "The 'Hello World' program serves as a simple test to verify that your programming environment is set up correctly. It's a way to confirm that you can write, compile (if needed), and execute code in a new language or environment.";
-      }
+    if (currentQuestion) {
+      const success = await saveMessage(userMessage, currentQuestion)
+      console.log(success)
     } else {
-      return "Good thinking. Do you have any specific questions about this assignment that I can help with?";
+      throw new Error("Question didn't load")
+    }
+    
+    setInputMessage('');
+  };
+
+  
+
+  const handleStream = async (stream: ReadableStream<Uint8Array<ArrayBufferLike>> | null) => {
+    if (stream == null) return "";
+    const reader = stream.getReader();
+    const decoder = new TextDecoder();
+    var text = ""
+    setMessages(prev => [...prev, {role: 'assistant', content: text}]);
+
+    try {
+      while (true) {
+        const {done, value} = await reader.read();
+        if (done) break;
+        
+        const chunk: string = decoder.decode(value);
+        const lines = chunk.split('\n').filter(line => line.trim() !== '');
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data === '[DONE]') break;
+                      
+            try {
+              const parsed = JSON.parse(data);
+              const content = parsed.choices[0]?.delta?.content;
+              //console.log(content);
+              text += content;
+              setMessages(prev => [...prev.slice(0, -1), {role: 'assistant', content: text}]);
+            } catch (e) {
+              console.error('Error parsing JSON:', e);
+            }
+          }
+        }
+      } 
+      
+    } finally {
+      reader.releaseLock()
+    }
+    //console.log(text)
+    return text;
+  }
+  // Generate a mock AI response based on the user's message and current question
+  const streamResponse = async () => {
+    console.log(messages)
+    const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/chat`, {
+      method: 'POST', // or 'GET' depending on your function
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`
+      },
+      body: JSON.stringify({
+        messages: messages
+      }) // Your function's data payload
+    });
+    const text = await handleStream(response.body);
+
+    if (currentQuestion) {
+      const success = await saveMessage({role: "assistant", content: text}, currentQuestion)
+      console.log(success)
+    } else {
+      throw new Error("Question didn't load")
+    }
+    return text;
+  };
+
+  const getMessages = async (problemId: string) => {
+    try {
+      const { data: problemMessages, error: err0 } = await supabase
+        .from('problems_messages')
+        .select('message_id')
+        .eq('problem_id', problemId);
+
+      if (err0) throw err0;
+      
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .in('id', problemMessages.map(msg => msg.message_id))
+        .order('time', { ascending: true });
+
+      if (error) {
+        throw error;
+      }
+
+      return data.map((entry) => {
+        return {
+          "role": entry.role,
+          "content": entry.content
+        }
+      });
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+      throw error;
     }
   };
-  
   // Get material type icon
   const getMaterialIcon = (type: string) => {
     switch(type) {
@@ -505,6 +633,7 @@ export default function AssignmentPage() {
       window.location.href = `/student/${studentId}/${courseSlug}`;
     }
   };
+  
   
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 space-y-8">
@@ -542,9 +671,6 @@ export default function AssignmentPage() {
                   <CardTitle className="text-lg">AI Tutor</CardTitle>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Button size="sm" variant="ghost" onClick={showHint}>
-                    <HelpCircle className="h-4 w-4 mr-1" /> Hint
-                  </Button>
                   <Button 
                     size="sm" 
                     variant="outline" 
@@ -566,9 +692,9 @@ export default function AssignmentPage() {
             
             <CardContent className="p-0">
               {/* Chat Messages */}
-              <div className="h-[50vh] overflow-y-auto p-4">
+              <div className="h-[50vh] overflow-y-auto p-4" ref={chatContainerRef}>
                 <div className="space-y-4">
-                  {messages.map((message, index) => (
+                  {messages.filter(msg => msg.role != 'system').map((message, index) => (
                     <div key={index} className={`flex ${message.role !== 'user' ? 'justify-start' : 'justify-end'}`}>
                       <div className={`flex max-w-[80%] ${message.role !== 'user' ? 'items-start' : 'items-end'}`}>
                         {message.role !== 'user' && (
@@ -588,14 +714,13 @@ export default function AssignmentPage() {
                           }`}
                         >
                           <div className="whitespace-pre-wrap">{message.content}</div>
-                          <div className="text-xs opacity-70 mt-1 text-right">
-                            {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </div>
+                  
                         </div>
                       </div>
                     </div>
                   ))}
-                  <div ref={messagesEndRef} />
+                  {/* This small div helps ensure we can scroll to the very bottom */}
+                  <div className="h-px" />
                 </div>
               </div>
               
