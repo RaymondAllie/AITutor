@@ -25,7 +25,10 @@ import {
   MoveRight,
   RefreshCw,
   HelpCircle,
-  CheckCircle
+  CheckCircle,
+  ZoomOut,
+  ZoomIn,
+  RotateCw
 } from "lucide-react"
 import {
   Dialog,
@@ -36,6 +39,16 @@ import {
   DialogTitle
 } from "@/components/ui/dialog"
 import { supabase } from "@/lib/supabase"
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar"
+import dynamic from 'next/dynamic'
+
+// Dynamically import the PDF viewer to avoid SSR issues
+const PDFViewer = dynamic(() => import('@/components/pdf-viewer'), { ssr: false })
 
 // Message types for chat
 type MessageRole = 'user' | 'assistant' | 'system';
@@ -57,6 +70,7 @@ interface Material {
   name: string;
   type: string;
   url?: string;
+  defaultPage?: number;
 }
 
 interface Assignment {
@@ -89,6 +103,7 @@ export default function AssignmentPage() {
   const [showCompletionDialog, setShowCompletionDialog] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null);
   
   const currentQuestion = assignment?.questions?.[currentQuestionIndex];
   const progress = assignment ? (completedQuestions.length / assignment.questions.length) * 100 : 0;
@@ -374,9 +389,17 @@ export default function AssignmentPage() {
     if (!currentQuestion) throw new Error("can't load question")
     
     const previous = await getMessages(currentQuestion.id)
-    const context = await pullContext(assignment.questions[currentQuestionIndex].question, 1)
+    const rag = await pullContext(assignment.questions[currentQuestionIndex].question, 1)
+    const context = rag.data
 
-    console.log(context);
+    setSelectedMaterial({
+      id: "idk",
+      name: "idk",
+      type: "idk",
+      url: rag.url,
+      defaultPage: rag.pages[0]
+    })  
+    console.log(rag.url);
 
     setMessages((prev) => [
       {
@@ -413,7 +436,7 @@ export default function AssignmentPage() {
     console.log(res);
     const body = await res.json();
 
-    return body.data;
+    return body;
   }
   // Navigate to previous question
   const goToPreviousQuestion = () => {
@@ -636,144 +659,225 @@ export default function AssignmentPage() {
   
   
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6 space-y-8">
-      {/* Assignment Header */}
-      <div>
-        <div className="flex items-center mb-2">
-          <Button variant="ghost" className="p-0 mr-2" asChild>
-            <a href={`/student/${studentId}/${courseSlug}`}><ChevronLeft className="h-5 w-5" /></a>
-          </Button>
-          <h1 className="text-3xl font-bold">{assignment.name}</h1>
-        </div>
-        <div className="text-gray-600 mb-3">
-          {assignment.courseName} • Due: {new Date(assignment.due_date).toLocaleDateString()}
-        </div>
-        <div className="mb-4">
-          <div className="flex justify-between items-center mb-1 text-sm">
-            <span>Progress</span>
-            <span>{completedQuestions.length} of {assignment.questions.length} questions completed</span>
-          </div>
-          <Progress 
-            value={progress} 
-            className={`h-2 ${allQuestionsCompleted ? 'bg-green-100' : ''}`}
-          />
-        </div>
-      </div>
-      
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Left Column - Chat UI */}
-        <div className="lg:col-span-8 space-y-4">
-          <Card className="border border-gray-200">
-            <CardHeader className="pb-3 border-b">
-              <div className="flex justify-between items-center">
-                <div className="flex items-center">
-                  <MessageCircle className="h-5 w-5 mr-2 text-primary" />
-                  <CardTitle className="text-lg">AI Tutor</CardTitle>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button 
-                    size="sm" 
-                    variant="outline" 
-                    onClick={() => markAsCompleted()}
-                    disabled={!currentQuestion || completedQuestions.includes(currentQuestion.id)}
-                  >
-                    Mark Complete
-                  </Button>
-                </div>
+    <SidebarProvider defaultOpen={true}>
+      <div className="flex h-screen">
+        <SidebarTrigger className="fixed top-4 right-4 z-50" />
+        <div className="flex-1">
+          <div className="max-w-full mx-auto px-4 py-6 space-y-8">
+            {/* Assignment Header */}
+            <div>
+              <div className="flex items-center mb-2">
+                <Button variant="ghost" className="p-0 mr-2" asChild>
+                  <a href={`/student/${studentId}/${courseSlug}`}><ChevronLeft className="h-5 w-5" /></a>
+                </Button>
+                <h1 className="text-3xl font-bold">{assignment.name}</h1>
               </div>
-              <CardDescription>
-                {currentQuestion ? (
-                  <>Question {currentQuestionIndex + 1} of {assignment.questions.length}: {currentQuestion.question}</>
-                ) : (
-                  <>No question selected</>
-                )}
-              </CardDescription>
-            </CardHeader>
-            
-            <CardContent className="p-0">
-              {/* Chat Messages */}
-              <div className="h-[50vh] overflow-y-auto p-4" ref={chatContainerRef}>
-                <div className="space-y-4">
-                  {messages.filter(msg => msg.role != 'system').map((message, index) => (
-                    <div key={index} className={`flex ${message.role !== 'user' ? 'justify-start' : 'justify-end'}`}>
-                      <div className={`flex max-w-[80%] ${message.role !== 'user' ? 'items-start' : 'items-end'}`}>
-                        {message.role !== 'user' && (
-                          <Avatar className="h-8 w-8 mr-2">
-                            <AvatarImage src="/avatars/ai-tutor.png" alt="AI" />
-                            <AvatarFallback>AI</AvatarFallback>
-                          </Avatar>
-                        )}
-                        
-                        <div 
-                          className={`rounded-lg px-3 py-2 ${
-                            message.role === 'user' 
-                              ? 'bg-primary text-primary-foreground ml-2' 
-                              : message.role === 'system'
-                                ? 'bg-secondary text-secondary-foreground'
-                                : 'bg-muted border border-border'
-                          }`}
+              <div className="text-gray-600 mb-3">
+                {assignment.courseName} • Due: {new Date(assignment.due_date).toLocaleDateString()}
+              </div>
+              <div className="mb-4">
+                <div className="flex justify-between items-center mb-1 text-sm">
+                  <span>Progress</span>
+                  <span>{completedQuestions.length} of {assignment.questions.length} questions completed</span>
+                </div>
+                <Progress 
+                  value={progress} 
+                  className={`h-2 ${allQuestionsCompleted ? 'bg-green-100' : ''}`}
+                />
+              </div>
+            </div>
+
+            {/* Main content with split view */}
+            <div className="grid grid-cols-2 gap-8 mb-4">
+              {/* Left side: Chat UI */}
+              <div className="space-y-4">
+                <Card className="border border-gray-200">
+                  <CardHeader className="pb-3 border-b">
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center">
+                        <MessageCircle className="h-5 w-5 mr-2 text-primary" />
+                        <CardTitle className="text-lg">AI Tutor</CardTitle>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          onClick={() => markAsCompleted()}
+                          disabled={!currentQuestion || completedQuestions.includes(currentQuestion.id)}
                         >
-                          <div className="whitespace-pre-wrap">{message.content}</div>
-                  
-                        </div>
+                          Mark Complete
+                        </Button>
                       </div>
                     </div>
-                  ))}
-                  {/* This small div helps ensure we can scroll to the very bottom */}
-                  <div className="h-px" />
-                </div>
+                    <CardDescription>
+                      {currentQuestion ? (
+                        <>Question {currentQuestionIndex + 1} of {assignment.questions.length}: {currentQuestion.question}</>
+                      ) : (
+                        <>No question selected</>
+                      )}
+                    </CardDescription>
+                  </CardHeader>
+                  
+                  <CardContent className="p-0">
+                    {/* Chat Messages */}
+                    <div className="h-[50vh] overflow-y-auto p-4" ref={chatContainerRef}>
+                      <div className="space-y-4">
+                        {messages.filter(msg => msg.role != 'system').map((message, index) => (
+                          <div key={index} className={`flex ${message.role !== 'user' ? 'justify-start' : 'justify-end'}`}>
+                            <div className={`flex max-w-[80%] ${message.role !== 'user' ? 'items-start' : 'items-end'}`}>
+                              {message.role !== 'user' && (
+                                <Avatar className="h-8 w-8 mr-2">
+                                  <AvatarImage src="/avatars/ai-tutor.png" alt="AI" />
+                                  <AvatarFallback>AI</AvatarFallback>
+                                </Avatar>
+                              )}
+                              
+                              <div 
+                                className={`rounded-lg px-3 py-2 ${
+                                  message.role === 'user' 
+                                    ? 'bg-primary text-primary-foreground ml-2' 
+                                    : message.role === 'system'
+                                      ? 'bg-secondary text-secondary-foreground'
+                                      : 'bg-muted border border-border'
+                                }`}
+                              >
+                                <div className="whitespace-pre-wrap">{message.content}</div>
+                        
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        {/* This small div helps ensure we can scroll to the very bottom */}
+                        <div className="h-px" />
+                      </div>
+                    </div>
+                    
+                    {/* Message Input */}
+                    <div className="border-t p-4">
+                      <form onSubmit={handleSendMessage} className="flex gap-2">
+                        <Input
+                          value={inputMessage}
+                          onChange={(e) => setInputMessage(e.target.value)}
+                          placeholder="Ask about this question..."
+                          className="flex-1"
+                        />
+                        <Button type="submit">
+                          <Send className="h-4 w-4" />
+                        </Button>
+                      </form>
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
-              
-              {/* Message Input */}
-              <div className="border-t p-4">
-                <form onSubmit={handleSendMessage} className="flex gap-2">
-                  <Input
-                    value={inputMessage}
-                    onChange={(e) => setInputMessage(e.target.value)}
-                    placeholder="Ask about this question..."
-                    className="flex-1"
-                  />
-                  <Button type="submit">
-                    <Send className="h-4 w-4" />
-                  </Button>
-                </form>
+
+              {/* Right side: PDF Viewer */}
+              <div className="space-y-4">
+                <Card className="border border-gray-200">
+                  <CardHeader className="pb-3 border-b">
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center">
+                        <FileText className="h-5 w-5 mr-2 text-primary" />
+                        <CardTitle className="text-lg">Course Materials</CardTitle>
+                      </div>
+                      {selectedMaterial?.url && (
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              const viewer = document.querySelector('[data-pdf-viewer]');
+                              if (viewer) {
+                                viewer.dispatchEvent(new CustomEvent('zoomOut'));
+                              }
+                            }}
+                          >
+                            <ZoomOut className="h-4 w-4" />
+                          </Button>
+                          <span className="flex items-center text-sm px-2 bg-muted rounded">
+                            <span data-pdf-zoom-display>100%</span>
+                          </span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              const viewer = document.querySelector('[data-pdf-viewer]');
+                              if (viewer) {
+                                viewer.dispatchEvent(new CustomEvent('zoomIn'));
+                              }
+                            }}
+                          >
+                            <ZoomIn className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              const viewer = document.querySelector('[data-pdf-viewer]');
+                              if (viewer) {
+                                viewer.dispatchEvent(new CustomEvent('rotate'));
+                              }
+                            }}
+                          >
+                            <RotateCw className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    {selectedMaterial?.url ? (
+                      <PDFViewer 
+                        url={selectedMaterial.url}
+                        defaultPage={selectedMaterial.defaultPage || 1}
+                      />
+                    ) : (
+                      <div className="flex items-center justify-center h-[50vh] text-gray-500">
+                        Select a material to view
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
               </div>
-            </CardContent>
-          </Card>
-          
-          {/* Question Navigation */}
-          <div className="flex justify-between">
-            <Button 
-              variant="outline" 
-              onClick={goToPreviousQuestion}
-              disabled={currentQuestionIndex === 0}
-            >
-              <ChevronLeft className="h-4 w-4 mr-1" /> Previous
-            </Button>
-            <Button 
-              variant="outline" 
-              onClick={goToNextQuestion}
-              disabled={currentQuestionIndex === assignment.questions.length - 1}
-            >
-              Next <ChevronRight className="h-4 w-4 ml-1" />
-            </Button>
+            </div>
+
+            {/* Question Navigation - Moved to bottom of page */}
+            <div className="flex justify-between items-center border-t pt-4">
+              <Button 
+                variant="outline" 
+                onClick={goToPreviousQuestion}
+                disabled={currentQuestionIndex === 0}
+              >
+                <ChevronLeft className="h-4 w-4 mr-2" /> Previous Question
+              </Button>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-sm">
+                  Question {currentQuestionIndex + 1} of {assignment.questions.length}
+                </Badge>
+                {currentQuestion && completedQuestions.includes(currentQuestion.id) && (
+                  <Badge variant="outline" className="bg-green-50 text-green-600 border-green-200">
+                    Completed
+                  </Badge>
+                )}
+              </div>
+              <Button 
+                variant="outline" 
+                onClick={goToNextQuestion}
+                disabled={currentQuestionIndex === assignment.questions.length - 1}
+              >
+                Next Question <ChevronRight className="h-4 w-4 ml-2" />
+              </Button>
+            </div>
           </div>
         </div>
-        
-        {/* Right Column - Resources and Navigation */}
-        <div className="lg:col-span-4 space-y-6">
-          
-          {/* All Questions */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">All Questions</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
+        <Sidebar side="right">
+          <SidebarContent>
+            <div className="p-4 space-y-4">
+              <h2 className="text-lg font-semibold">Questions</h2>
               <div className="divide-y">
                 {assignment.questions.map((question, index) => (
                   <div 
                     key={question.id} 
-                    className={`px-4 py-3 flex items-center hover:bg-muted transition-colors cursor-pointer ${
+                    className={`py-3 flex items-center hover:bg-muted transition-colors cursor-pointer ${
                       index === currentQuestionIndex ? 'bg-muted' : ''
                     }`}
                     onClick={() => setCurrentQuestionIndex(index)}
@@ -789,16 +893,10 @@ export default function AssignmentPage() {
                     )}
                   </div>
                 ))}
-                
-                {assignment.questions.length === 0 && (
-                  <div className="px-4 py-6 text-center text-gray-500">
-                    No questions available for this assignment.
-                  </div>
-                )}
               </div>
-            </CardContent>
-          </Card>
-        </div>
+            </div>
+          </SidebarContent>
+        </Sidebar>
       </div>
       
       {/* Assignment Completion Dialog */}
@@ -846,6 +944,6 @@ export default function AssignmentPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </SidebarProvider>
   );
 }
