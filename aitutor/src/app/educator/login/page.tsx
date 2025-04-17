@@ -2,13 +2,13 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { ArrowLeft } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
 export default function EducatorLogin() {
@@ -18,6 +18,15 @@ export default function EducatorLogin() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Check for error parameters in the URL
+  useEffect(() => {
+    const errorParam = searchParams.get('error');
+    if (errorParam === 'unauthorized') {
+      setError('You do not have access to the student area. Please log in as an educator.');
+    }
+  }, [searchParams]);
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,6 +45,22 @@ export default function EducatorLogin() {
       }
       
       if (data?.user) {
+        // Get the user's role from the database
+        const { data: userData, error: roleError } = await supabase
+          .from('users')
+          .select('role')
+          .eq('id', data.user.id)
+          .single();
+          
+        if (roleError) {
+          throw roleError;
+        }
+        
+        // Check if the user has the educator role
+        if (userData?.role !== 'educator') {
+          throw new Error('You do not have educator access. Please use the student login page.');
+        }
+        
         // Navigate to the educator dashboard
         router.push(`/educator/${data.user.id}`);
       }
