@@ -5,33 +5,63 @@ import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 
 // Configure worker
 pdfjs.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.js`;
 
-// Configure pdf.js
+interface PDFTab {
+  id: string;
+  url: string;
+  title: string;
+  defaultPage?: number;
+}
 
 interface PDFViewerProps {
-  url: string | null;
-  defaultPage?: number;
+  tabs: PDFTab[];
+  onCloseTab?: (tabId: string) => void;
   refreshKey?: number;
-  clear?: boolean;
 }
 
 const PDFViewer: React.FC<PDFViewerProps> = ({ 
-  url, 
-  defaultPage = 1, 
+  tabs,
+  onCloseTab,
   refreshKey = 0,
-  clear = false 
 }) => {
-  const [numPages, setNumPages] = useState<number>(0);
-  const [pageNumber, setPageNumber] = useState(defaultPage);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<string>(tabs[0]?.id || '');
+  const [pdfStates, setPdfStates] = useState<Record<string, {
+    numPages: number;
+    pageNumber: number;
+    error: string | null;
+    loading: boolean;
+    scale: number;
+    rotation: number;
+  }>>({});
   const [containerWidth, setContainerWidth] = useState(800);
-  const [scale, setScale] = useState(1);
-  const [rotation, setRotation] = useState(0);
+
+  // Initialize PDF states for new tabs
+  useEffect(() => {
+    const newPdfStates = { ...pdfStates };
+    tabs.forEach(tab => {
+      if (!newPdfStates[tab.id]) {
+        newPdfStates[tab.id] = {
+          numPages: 0,
+          pageNumber: tab.defaultPage || 1,
+          error: null,
+          loading: true,
+          scale: 1,
+          rotation: 0,
+        };
+      }
+    });
+    setPdfStates(newPdfStates);
+    
+    // Set active tab if none is selected
+    if (!activeTab && tabs.length > 0) {
+      setActiveTab(tabs[0].id);
+    }
+  }, [tabs]);
 
   useEffect(() => {
     const updateWidth = () => {
@@ -53,23 +83,46 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
     if (!viewer) return;
 
     const handleZoomIn = () => {
-      setScale(prevScale => {
-        const newScale = Math.min(prevScale + 0.1, 2.5);
+      setPdfStates(prev => {
+        if (!activeTab) return prev;
+        const newScale = Math.min(prev[activeTab].scale + 0.1, 2.5);
         updateZoomDisplay(newScale);
-        return newScale;
+        return {
+          ...prev,
+          [activeTab]: {
+            ...prev[activeTab],
+            scale: newScale,
+          },
+        };
       });
     };
 
     const handleZoomOut = () => {
-      setScale(prevScale => {
-        const newScale = Math.max(prevScale - 0.1, 0.5);
+      setPdfStates(prev => {
+        if (!activeTab) return prev;
+        const newScale = Math.max(prev[activeTab].scale - 0.1, 0.5);
         updateZoomDisplay(newScale);
-        return newScale;
+        return {
+          ...prev,
+          [activeTab]: {
+            ...prev[activeTab],
+            scale: newScale,
+          },
+        };
       });
     };
 
     const handleRotate = () => {
-      setRotation(prevRotation => (prevRotation + 90) % 360);
+      setPdfStates(prev => {
+        if (!activeTab) return prev;
+        return {
+          ...prev,
+          [activeTab]: {
+            ...prev[activeTab],
+            rotation: (prev[activeTab].rotation + 90) % 360,
+          },
+        };
+      });
     };
 
     viewer.addEventListener('zoomIn', handleZoomIn);
@@ -81,16 +134,23 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
       viewer.removeEventListener('zoomOut', handleZoomOut);
       viewer.removeEventListener('rotate', handleRotate);
     };
-  }, []);
+  }, [activeTab]);
 
   // Reset state when refreshKey changes
   useEffect(() => {
-    setPageNumber(defaultPage);
-    setScale(1);
-    setRotation(0);
-    setLoading(true);
+    if (!activeTab) return;
+    setPdfStates(prev => ({
+      ...prev,
+      [activeTab]: {
+        ...prev[activeTab],
+        pageNumber: tabs.find(t => t.id === activeTab)?.defaultPage || 1,
+        scale: 1,
+        rotation: 0,
+        loading: true,
+      },
+    }));
     updateZoomDisplay(1);
-  }, [refreshKey, defaultPage]);
+  }, [refreshKey, activeTab]);
 
   function updateZoomDisplay(newScale: number) {
     const display = document.querySelector('[data-pdf-zoom-display]');
@@ -99,101 +159,161 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
     }
   }
 
-  function onDocumentLoadSuccess({ numPages }: { numPages: number }): void {
-    setNumPages(numPages);
-    setError(null);
-    setLoading(false);
+  function onDocumentLoadSuccess(tabId: string, { numPages }: { numPages: number }): void {
+    setPdfStates(prev => ({
+      ...prev,
+      [tabId]: {
+        ...prev[tabId],
+        numPages,
+        error: null,
+        loading: false,
+      },
+    }));
   }
 
-  function onDocumentLoadError(error: Error): void {
+  function onDocumentLoadError(tabId: string, error: Error): void {
     console.error('Error loading PDF:', error);
-    setError('Failed to load PDF. Please check if the URL is correct and accessible.');
-    setLoading(false);
+    setPdfStates(prev => ({
+      ...prev,
+      [tabId]: {
+        ...prev[tabId],
+        error: 'Failed to load PDF. Please check if the URL is correct and accessible.',
+        loading: false,
+      },
+    }));
   }
 
-  function changePage(offset: number) {
-    setPageNumber(prevPageNumber => {
-      const newPage = prevPageNumber + offset;
-      return Math.max(1, Math.min(newPage, numPages));
+  function changePage(tabId: string, offset: number) {
+    setPdfStates(prev => {
+      const currentState = prev[tabId];
+      const newPage = currentState.pageNumber + offset;
+      return {
+        ...prev,
+        [tabId]: {
+          ...currentState,
+          pageNumber: Math.max(1, Math.min(newPage, currentState.numPages)),
+        },
+      };
     });
   }
 
-  if (error) {
-    return (
-      <div className="flex items-center justify-center h-[50vh] text-red-500">
-        {error}
-      </div>
-    );
-  }
-
   return (
-    <div className="flex flex-col pdf-container" data-pdf-viewer>
-      <div className="h-[50vh] flex flex-col">
-        {!clear && url ? (
-          <div className="flex-1 overflow-auto bg-white">
-            <div className="w-fit mx-auto">
-              <Document
-                key={refreshKey}
-                file={url}
-                onLoadSuccess={onDocumentLoadSuccess}
-                onLoadError={onDocumentLoadError}
-                loading={
-                  <div className="flex items-center justify-center h-full">
-                    Loading PDF...
-                  </div>
-                }
-                className="py-4"
-              >
-                {!loading && (
-                  <Page
-                    pageNumber={pageNumber}
-                    renderTextLayer={true}
-                    renderAnnotationLayer={true}
-                    width={Math.min(containerWidth - 48, 800)}
-                    scale={scale}
-                    rotate={rotation}
-                    canvasBackground="white"
-                    className="shadow-lg"
-                  />
-                )}
-              </Document>
-            </div>
-          </div>
-        ) : (
-          <div className="flex-1 flex items-center justify-center text-gray-500">
-            No PDF loaded
-          </div>
-        )}
+    <div className="flex flex-col h-full pdf-container" data-pdf-viewer>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col flex-1 [&>div:first-child]:mt-0">
+        <TabsList className="flex h-auto overflow-x-auto border-b rounded-none">
+          {tabs.map(tab => (
+            <TabsTrigger
+              key={tab.id}
+              value={tab.id}
+              className="flex items-center gap-2 min-w-fit data-[state=active]:bg-white rounded-none"
+            >
+              <span className="truncate max-w-[150px]">{tab.title}</span>
+              {onCloseTab && (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCloseTab(tab.id);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onCloseTab(tab.id);
+                    }
+                  }}
+                  className="p-1 hover:bg-gray-200 rounded-full cursor-pointer"
+                >
+                  <X className="h-3 w-3" />
+                </div>
+              )}
+            </TabsTrigger>
+          ))}
+        </TabsList>
 
-        {/* Navigation controls */}
-        {numPages > 0 && !clear && (
-          <div className="flex items-center gap-4 justify-center border-t p-4 bg-white">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => changePage(-1)}
-              disabled={pageNumber <= 1}
-            >
-              <ChevronLeft className="h-4 w-4 mr-1" />
-              Previous
-            </Button>
-            <p className="text-sm">
-              Page {pageNumber} of {numPages}
-            </p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => changePage(1)}
-              disabled={pageNumber >= numPages}
-            >
-              Next
-              <ChevronRight className="h-4 w-4 ml-1" />
-            </Button>
-          </div>
-        )}
-      </div>
+        <div className="flex-1 min-h-0">
+          {tabs.map(tab => {
+            const pdfState = pdfStates[tab.id];
+            if (!pdfState) return null;
+
+            return (
+              <TabsContent
+                key={tab.id}
+                value={tab.id}
+                className="h-full data-[state=inactive]:hidden"
+              >
+                {pdfState.error ? (
+                  <div className="flex items-center justify-center h-full text-red-500">
+                    {pdfState.error}
+                  </div>
+                ) : (
+                  <div className="h-full flex flex-col">
+                    <div className="flex-1 overflow-auto bg-white min-h-0">
+                      <div className="w-fit mx-auto">
+                        <Document
+                          key={`${tab.id}-${refreshKey}`}
+                          file={tab.url}
+                          onLoadSuccess={(result) => onDocumentLoadSuccess(tab.id, result)}
+                          onLoadError={(error) => onDocumentLoadError(tab.id, error)}
+                          loading={
+                            <div className="flex items-center justify-center h-full">
+                              Loading PDF...
+                            </div>
+                          }
+                          className="py-4"
+                        >
+                          {!pdfState.loading && (
+                            <Page
+                              pageNumber={pdfState.pageNumber}
+                              renderTextLayer={true}
+                              renderAnnotationLayer={true}
+                              width={Math.min(containerWidth - 48, 800)}
+                              scale={pdfState.scale}
+                              rotate={pdfState.rotation}
+                              canvasBackground="white"
+                              className="shadow-lg"
+                            />
+                          )}
+                        </Document>
+                      </div>
+                    </div>
+
+                    {/* Navigation controls */}
+                    {pdfState.numPages > 0 && (
+                      <div className="flex items-center gap-4 justify-center border-t p-4 bg-white">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => changePage(tab.id, -1)}
+                          disabled={pdfState.pageNumber <= 1}
+                        >
+                          <ChevronLeft className="h-4 w-4 mr-1" />
+                          Previous
+                        </Button>
+                        <p className="text-sm">
+                          Page {pdfState.pageNumber} of {pdfState.numPages}
+                        </p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => changePage(tab.id, 1)}
+                          disabled={pdfState.pageNumber >= pdfState.numPages}
+                        >
+                          Next
+                          <ChevronRight className="h-4 w-4 ml-1" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </TabsContent>
+            );
+          })}
+        </div>
+      </Tabs>
     </div>
   );
 };
 
-export default PDFViewer; 
+export default PDFViewer;

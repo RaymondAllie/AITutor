@@ -46,6 +46,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import dynamic from 'next/dynamic'
+import { v4 as uuidv4 } from 'uuid'
 
 // Dynamically import the PDF viewer to avoid SSR issues
 const PDFViewer = dynamic(() => import('@/components/pdf-viewer'), { ssr: false })
@@ -53,8 +54,10 @@ const PDFViewer = dynamic(() => import('@/components/pdf-viewer'), { ssr: false 
 // Message types for chat
 type MessageRole = 'user' | 'assistant' | 'system';
 interface Message {
+  id: string;
   role: MessageRole;
   content: string;
+  time: string;
 }
 
 interface Question {
@@ -90,6 +93,13 @@ interface Assignment {
   };
 }
 
+interface PDFTab {
+  id: string;
+  url: string;
+  title: string;
+  defaultPage: number;
+}
+
 export default function AssignmentPage() {
   const params = useParams();
   const { studentId, courseSlug, assignmentSlug } = params;
@@ -103,13 +113,21 @@ export default function AssignmentPage() {
   const [showCompletionDialog, setShowCompletionDialog] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
-  const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null);
+  const [selectedMaterials, setSelectedMaterials] = useState<Material[]>([]);
   const [pdfRefreshKey, setPdfRefreshKey] = useState(0);
   
   const currentQuestion = assignment?.questions?.[currentQuestionIndex];
   const progress = assignment ? (completedQuestions.length / assignment.questions.length) * 100 : 0;
   const allQuestionsCompleted = assignment ? completedQuestions.length === assignment.questions.length : false;
   
+  const createMessage = (role: MessageRole, content: string): Message => {
+    return {
+      id: uuidv4(),
+      role,
+      content,
+      time: new Date().toISOString()
+    }
+  }
   // Load assignment data
   useEffect(() => {
     const fetchAssignmentData = async () => {
@@ -285,16 +303,16 @@ export default function AssignmentPage() {
         
         // Add initial system message
         if (questions.length > 0) {
-          const initialMessage: Message = {
-            role: 'system',
-            content: `Welcome to the ${fullAssignment.name} assignment. Let's start with the first question: "${questions[0].question}"`,
-          };
+          const initialMessage = createMessage(
+            'system',
+            `Welcome to the ${fullAssignment.name} assignment. Let's start with the first question: "${questions[0].question}"`
+          );
           setMessages([initialMessage]);
         } else {
-          const initialMessage: Message = {
-            role: 'system',
-            content: `Welcome to the ${fullAssignment.name} assignment. This assignment doesn't have any questions yet.`,
-          };
+          const initialMessage = createMessage(
+            'system',
+            `Welcome to the ${fullAssignment.name} assignment. This assignment doesn't have any questions yet.`
+          );
           setMessages([initialMessage]);
         }
         
@@ -389,35 +407,40 @@ export default function AssignmentPage() {
   
   const setUpQuestion = async (index: number) => {
     if (!currentQuestion) throw new Error("can't load question")
-    const rag = await pullContext(assignment.questions[currentQuestionIndex].question, 1)
-    setPdfRefreshKey(prev => prev + 1);
+    const rag = await pullContext(assignment.questions[currentQuestionIndex].question, 3)
 
-    const previous = await getMessages(currentQuestion.id)
-    
     const context = rag.data
+    interface Material {
+      id: string;
+      name: string;
+      type: string;
+      url?: string;
+      defaultPage?: number;
+    }
+  
+    if (rag.urls.length > 0) {
+      console.log("PULLED CONTEXT: " + rag.urls.length)
+      setSelectedMaterials((_prev) => {
+        return rag.urls.map((obj: string, index: number) => {
+          return {
+            id: "" + index,
+            name: "boo",
+            type: "lit",
+            url: obj,
+            defaultPage: rag.pages[index]
+          }
+        })
+      })
+      console.log(selectedMaterials)
+      setPdfRefreshKey(prev => prev + 1);
 
-    setSelectedMaterial({
-      id: "idk",
-      name: "idk",
-      type: "idk",
-      url: rag.url,
-      defaultPage: rag.pages[0]
-    })  
-    console.log(rag.url);
+    }
+    const previous = await getMessages(currentQuestion.id)
 
     setMessages((prev) => [
-      {
-        "role": "system",
-        "content": "You are a helpful AI tutor meant to help a student with any problems they need answered, guide them through solutions, don't tell them the answer, you objective to get students to actually learn the material being presented. Keep your answers short and to the point, dont show emotion and eliminate the fluff"
-      },
-      {
-        "role": "system",
-        "content": `Here is some context to the question you are trying to help the student through, use if applicable:\n\n${context.join("\n\n")}`
-      },
-      {
-        "role": "assistant",
-        "content": `Question ${currentQuestionIndex + 1}: "${assignment.questions[currentQuestionIndex].question}"`
-      },
+      createMessage("system", "You are a helpful AI tutor meant to help a student with any problems they need answered, guide them through solutions, don't tell them the answer, you objective to get students to actually learn the material being presented. Keep your answers short and to the point, dont show emotion and eliminate the fluff"),
+      createMessage("system", `Here is some context to the question you are trying to help the student through, use if applicable:\n\n${context.join("\n\n")}`),
+      createMessage("assistant", `Question ${currentQuestionIndex + 1}: "${assignment.questions[currentQuestionIndex].question}"`),
       ...previous
     ])
   }
@@ -448,10 +471,10 @@ export default function AssignmentPage() {
       setCurrentQuestionIndex(currentQuestionIndex - 1);
       
       // Add system message for the new question
-      const newMessage: Message = {
-        role: 'system',
-        content: `Let's go back to question ${currentQuestionIndex}: "${assignment.questions[currentQuestionIndex - 1].question}"`,
-      };
+      const newMessage = createMessage(
+        'system',
+        `Let's go back to question ${currentQuestionIndex}: "${assignment.questions[currentQuestionIndex - 1].question}"`
+      );
       setMessages([...messages, newMessage]);
     }
   };
@@ -496,7 +519,34 @@ export default function AssignmentPage() {
     }
   };
 
+  const clearMessages = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const msgs = JSON.parse(JSON.stringify(messages))
+      setMessages((prev) => [])
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/remove_messages`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`
+        },
+        body: JSON.stringify({
+          messages: msgs
+        })
+      });
   
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+       const n = await setUpQuestion(currentQuestionIndex)
+
+    } catch (e) {
+      console.log("Error deleting messages: ", e);
+      throw e;
+    }
+  }
   const saveMessage = async (msg: Message, problem: Question) => {
     try {
       const { data: { session } } = await supabase.auth.getSession()
@@ -509,9 +559,10 @@ export default function AssignmentPage() {
         },
         body: JSON.stringify({
           problem_id: problem.id,
+          message_id: msg.id,
           role: msg.role,
           content: msg.content,
-          time: new Date().toISOString()
+          time: msg.time
         })
       });
   
@@ -531,10 +582,7 @@ export default function AssignmentPage() {
     e.preventDefault();
     
     if (!inputMessage.trim()) return;
-    const userMessage: Message = {
-      role: 'user',
-      content: inputMessage,
-    };
+    const userMessage = createMessage('user', inputMessage);
     setInputMessage('');
 
     setMessages(prev => [...prev, userMessage]);
@@ -554,7 +602,7 @@ export default function AssignmentPage() {
     const reader = stream.getReader();
     const decoder = new TextDecoder();
     var text = ""
-    setMessages(prev => [...prev, {role: 'assistant', content: text}]);
+    setMessages(prev => [...prev, createMessage('assistant', text)]);
 
     try {
       while (true) {
@@ -574,7 +622,7 @@ export default function AssignmentPage() {
               const content = parsed.choices[0]?.delta?.content;
               //console.log(content);
               text += content;
-              setMessages(prev => [...prev.slice(0, -1), {role: 'assistant', content: text}]);
+              setMessages(prev => [...prev.slice(0, -1), createMessage('assistant', text)]);
             } catch (e) {
               console.error('Error parsing JSON:', e);
             }
@@ -585,7 +633,7 @@ export default function AssignmentPage() {
     } finally {
       reader.releaseLock()
     }
-    //console.log(text)
+    
     return text;
   }
   // Generate a mock AI response based on the user's message and current question
@@ -602,14 +650,15 @@ export default function AssignmentPage() {
       }) // Your function's data payload
     });
     const text = await handleStream(response.body);
-
+    const message = createMessage('assistant', text);
+    setMessages((prev) => [...prev.slice(0, -1), message])
     if (currentQuestion) {
-      const success = await saveMessage({role: "assistant", content: text}, currentQuestion)
+      const success = await saveMessage(message, currentQuestion)
       console.log(success)
     } else {
       throw new Error("Question didn't load")
     }
-    return text;
+    return message;
   };
 
   const getMessages = async (problemId: string) => {
@@ -631,12 +680,12 @@ export default function AssignmentPage() {
         throw error;
       }
 
-      return data.map((entry) => {
-        return {
-          "role": entry.role,
-          "content": entry.content
-        }
-      });
+      return data.map((entry) => ({
+        id: entry.id,
+        role: entry.role as MessageRole,
+        content: entry.content,
+        time: entry.time
+      }));
     } catch (error) {
       console.error('Error fetching messages:', error);
       throw error;
@@ -661,6 +710,19 @@ export default function AssignmentPage() {
     }
   };
   
+  const handleCloseTab = (materialId: string) => {
+    setSelectedMaterials(prev => prev.filter(material => material.id !== materialId));
+  };
+
+  const addMaterial = (material: Material) => {
+    setSelectedMaterials(prev => {
+      const exists = prev.some(m => m.url === material.url);
+      if (!exists) {
+        return [...prev, material];
+      }
+      return prev;
+    });
+  };
   
   return (
     <SidebarProvider defaultOpen={true}>
@@ -703,6 +765,15 @@ export default function AssignmentPage() {
                         <CardTitle className="text-lg">AI Tutor</CardTitle>
                       </div>
                       <div className="flex items-center gap-2">
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => {
+                            clearMessages()
+                          }}
+                        >
+                          Clear Messages
+                        </Button>
                         <Button 
                           size="sm" 
                           variant="outline" 
@@ -783,7 +854,7 @@ export default function AssignmentPage() {
                         <FileText className="h-5 w-5 mr-2 text-primary" />
                         <CardTitle className="text-lg">Course Materials</CardTitle>
                       </div>
-                      {selectedMaterial?.url && (
+                      {selectedMaterials.length > 0 && (
                         <div className="flex items-center gap-2">
                           <Button
                             variant="outline"
@@ -829,10 +900,15 @@ export default function AssignmentPage() {
                     </div>
                   </CardHeader>
                   <CardContent className="p-0">
-                    {selectedMaterial?.url ? (
+                    {selectedMaterials.length > 0 ? (
                       <PDFViewer 
-                        url={selectedMaterial.url}
-                        defaultPage={selectedMaterial.defaultPage || 1}
+                        tabs={selectedMaterials.map(material => ({
+                          id: material.id,
+                          url: material.url || '',
+                          title: material.name,
+                          defaultPage: material.defaultPage || 1
+                        }))}
+                        onCloseTab={handleCloseTab}
                         refreshKey={pdfRefreshKey}
                       />
                     ) : (
