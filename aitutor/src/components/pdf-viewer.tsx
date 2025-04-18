@@ -7,58 +7,31 @@ import 'react-pdf/dist/esm/Page/TextLayer.css';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
-// Configure worker to use local file from public directory
-pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
+// Configure worker
+pdfjs.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.js`;
+
+// Configure pdf.js
 
 interface PDFViewerProps {
-  url: string;
+  url: string | null;
   defaultPage?: number;
+  refreshKey?: number;
+  clear?: boolean;
 }
 
-const PDFViewer: React.FC<PDFViewerProps> = ({ url, defaultPage = 1 }) => {
+const PDFViewer: React.FC<PDFViewerProps> = ({ 
+  url, 
+  defaultPage = 1, 
+  refreshKey = 0,
+  clear = false 
+}) => {
   const [numPages, setNumPages] = useState<number>(0);
+  const [pageNumber, setPageNumber] = useState(defaultPage);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [containerWidth, setContainerWidth] = useState(800);
   const [scale, setScale] = useState(1);
   const [rotation, setRotation] = useState(0);
-  const [visiblePages, setVisiblePages] = useState<Set<number>>(new Set([defaultPage]));
-  const containerRef = useRef<HTMLDivElement>(null);
-  const observerRef = useRef<IntersectionObserver | null>(null);
-
-  const SCALE_STEP = 0.1;
-  const MIN_SCALE = 0.5;
-  const MAX_SCALE = 2.5;
-
-  // Set up intersection observer for lazy loading
-  useEffect(() => {
-    if (!numPages) return;
-
-    observerRef.current = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          const pageNumber = parseInt(entry.target.getAttribute('data-page-number') || '0');
-          if (entry.isIntersecting && pageNumber) {
-            setVisiblePages(prev => new Set([...prev, pageNumber]));
-          }
-        });
-      },
-      {
-        root: containerRef.current,
-        rootMargin: '100px 0px', // Start loading pages 100px before they come into view
-        threshold: 0.1
-      }
-    );
-
-    // Observe all page placeholders
-    document.querySelectorAll('[data-page-number]').forEach(pageElement => {
-      observerRef.current?.observe(pageElement);
-    });
-
-    return () => {
-      observerRef.current?.disconnect();
-    };
-  }, [numPages]);
 
   useEffect(() => {
     const updateWidth = () => {
@@ -81,7 +54,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ url, defaultPage = 1 }) => {
 
     const handleZoomIn = () => {
       setScale(prevScale => {
-        const newScale = Math.min(prevScale + SCALE_STEP, MAX_SCALE);
+        const newScale = Math.min(prevScale + 0.1, 2.5);
         updateZoomDisplay(newScale);
         return newScale;
       });
@@ -89,7 +62,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ url, defaultPage = 1 }) => {
 
     const handleZoomOut = () => {
       setScale(prevScale => {
-        const newScale = Math.max(prevScale - SCALE_STEP, MIN_SCALE);
+        const newScale = Math.max(prevScale - 0.1, 0.5);
         updateZoomDisplay(newScale);
         return newScale;
       });
@@ -110,15 +83,14 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ url, defaultPage = 1 }) => {
     };
   }, []);
 
-  // Scroll to default page when document loads
+  // Reset state when refreshKey changes
   useEffect(() => {
-    if (loading || !defaultPage || defaultPage > numPages) return;
-
-    const pageElement = document.querySelector(`[data-page-number="${defaultPage}"]`);
-    if (pageElement && containerRef.current) {
-      pageElement.scrollIntoView({ behavior: 'auto', block: 'start' });
-    }
-  }, [loading, defaultPage, numPages]);
+    setPageNumber(defaultPage);
+    setScale(1);
+    setRotation(0);
+    setLoading(true);
+    updateZoomDisplay(1);
+  }, [refreshKey, defaultPage]);
 
   function updateZoomDisplay(newScale: number) {
     const display = document.querySelector('[data-pdf-zoom-display]');
@@ -139,6 +111,13 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ url, defaultPage = 1 }) => {
     setLoading(false);
   }
 
+  function changePage(offset: number) {
+    setPageNumber(prevPageNumber => {
+      const newPage = prevPageNumber + offset;
+      return Math.max(1, Math.min(newPage, numPages));
+    });
+  }
+
   if (error) {
     return (
       <div className="flex items-center justify-center h-[50vh] text-red-500">
@@ -149,27 +128,23 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ url, defaultPage = 1 }) => {
 
   return (
     <div className="flex flex-col pdf-container" data-pdf-viewer>
-      <div className="h-[50vh] overflow-y-auto" ref={containerRef}>
-        <Document
-          file={url}
-          onLoadSuccess={onDocumentLoadSuccess}
-          onLoadError={onDocumentLoadError}
-          loading={
-            <div className="flex items-center justify-center h-full">
-              Loading PDF...
-            </div>
-          }
-          className="flex flex-col items-center p-4"
-        >
-          {Array.from(new Array(numPages), (_, index) => {
-            const pageNumber = index + 1;
-            return (
-              <div 
-                key={`page_${pageNumber}`} 
-                className="mb-4 min-h-[200px]"
-                data-page-number={pageNumber}
+      <div className="h-[50vh] flex flex-col">
+        {!clear && url ? (
+          <div className="flex-1 overflow-auto bg-white">
+            <div className="w-fit mx-auto">
+              <Document
+                key={refreshKey}
+                file={url}
+                onLoadSuccess={onDocumentLoadSuccess}
+                onLoadError={onDocumentLoadError}
+                loading={
+                  <div className="flex items-center justify-center h-full">
+                    Loading PDF...
+                  </div>
+                }
+                className="py-4"
               >
-                {visiblePages.has(pageNumber) ? (
+                {!loading && (
                   <Page
                     pageNumber={pageNumber}
                     renderTextLayer={true}
@@ -177,18 +152,45 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ url, defaultPage = 1 }) => {
                     width={Math.min(containerWidth - 48, 800)}
                     scale={scale}
                     rotate={rotation}
-                    canvasBackground="transparent"
-                    className="max-w-full"
+                    canvasBackground="white"
+                    className="shadow-lg"
                   />
-                ) : (
-                  <div className="flex items-center justify-center h-[200px] bg-gray-100 rounded">
-                    Page {pageNumber}
-                  </div>
                 )}
-              </div>
-            );
-          })}
-        </Document>
+              </Document>
+            </div>
+          </div>
+        ) : (
+          <div className="flex-1 flex items-center justify-center text-gray-500">
+            No PDF loaded
+          </div>
+        )}
+
+        {/* Navigation controls */}
+        {numPages > 0 && !clear && (
+          <div className="flex items-center gap-4 justify-center border-t p-4 bg-white">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => changePage(-1)}
+              disabled={pageNumber <= 1}
+            >
+              <ChevronLeft className="h-4 w-4 mr-1" />
+              Previous
+            </Button>
+            <p className="text-sm">
+              Page {pageNumber} of {numPages}
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => changePage(1)}
+              disabled={pageNumber >= numPages}
+            >
+              Next
+              <ChevronRight className="h-4 w-4 ml-1" />
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );

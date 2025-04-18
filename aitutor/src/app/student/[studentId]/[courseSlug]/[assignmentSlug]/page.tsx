@@ -104,6 +104,7 @@ export default function AssignmentPage() {
   const [error, setError] = useState<string | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null);
+  const [pdfRefreshKey, setPdfRefreshKey] = useState(0);
   
   const currentQuestion = assignment?.questions?.[currentQuestionIndex];
   const progress = assignment ? (completedQuestions.length / assignment.questions.length) * 100 : 0;
@@ -345,6 +346,7 @@ export default function AssignmentPage() {
   
   useEffect(() => {
     if (assignment && assignment.questions.length > 0) {
+      setMessages((prev) => [])
       setUpQuestion(currentQuestionIndex);
     }
   }, [currentQuestionIndex, assignment]);
@@ -387,9 +389,11 @@ export default function AssignmentPage() {
   
   const setUpQuestion = async (index: number) => {
     if (!currentQuestion) throw new Error("can't load question")
-    
-    const previous = await getMessages(currentQuestion.id)
     const rag = await pullContext(assignment.questions[currentQuestionIndex].question, 1)
+    setPdfRefreshKey(prev => prev + 1);
+
+    const previous = await getMessages(currentQuestion.id)
+    
     const context = rag.data
 
     setSelectedMaterial({
@@ -531,7 +535,8 @@ export default function AssignmentPage() {
       role: 'user',
       content: inputMessage,
     };
-    
+    setInputMessage('');
+
     setMessages(prev => [...prev, userMessage]);
     if (currentQuestion) {
       const success = await saveMessage(userMessage, currentQuestion)
@@ -539,8 +544,7 @@ export default function AssignmentPage() {
     } else {
       throw new Error("Question didn't load")
     }
-    
-    setInputMessage('');
+  
   };
 
   
@@ -829,6 +833,7 @@ export default function AssignmentPage() {
                       <PDFViewer 
                         url={selectedMaterial.url}
                         defaultPage={selectedMaterial.defaultPage || 1}
+                        refreshKey={pdfRefreshKey}
                       />
                     ) : (
                       <div className="flex items-center justify-center h-[50vh] text-gray-500">
