@@ -138,19 +138,24 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
 
   // Reset state when refreshKey changes
   useEffect(() => {
-    if (!activeTab) return;
+    // Set active tab to first tab on refresh
+    if (tabs.length > 0) {
+      setActiveTab(tabs[0].id);
+    }
+
+    // Reset PDF state for the newly selected tab
     setPdfStates(prev => ({
       ...prev,
-      [activeTab]: {
-        ...prev[activeTab],
-        pageNumber: tabs.find(t => t.id === activeTab)?.defaultPage || 1,
+      [tabs[0]?.id]: {
+        ...prev[tabs[0]?.id],
+        pageNumber: tabs[0]?.defaultPage || 1,
         scale: 1,
         rotation: 0,
         loading: true,
       },
     }));
     updateZoomDisplay(1);
-  }, [refreshKey, activeTab]);
+  }, [refreshKey]);
 
   function updateZoomDisplay(newScale: number) {
     const display = document.querySelector('[data-pdf-zoom-display]');

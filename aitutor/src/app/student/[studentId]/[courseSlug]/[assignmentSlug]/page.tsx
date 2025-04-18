@@ -421,12 +421,12 @@ export default function AssignmentPage() {
     if (rag.urls.length > 0) {
       console.log("PULLED CONTEXT: " + rag.urls.length)
       setSelectedMaterials((_prev) => {
-        return rag.urls.map((obj: string, index: number) => {
+        return rag.material_ids.map((obj: string, index: number) => {
           return {
-            id: "" + index,
-            name: "boo",
-            type: "lit",
-            url: obj,
+            id: index + ":  " + obj, //this is wierd, must be different ids so dont use the id for anythign else
+            name: rag.names[index],
+            type: rag.types[index],
+            url: rag.urls[index],
             defaultPage: rag.pages[index]
           }
         })
