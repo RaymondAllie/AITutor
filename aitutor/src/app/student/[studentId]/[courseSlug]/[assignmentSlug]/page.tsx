@@ -365,9 +365,31 @@ export default function AssignmentPage() {
   useEffect(() => {
     if (assignment && assignment.questions.length > 0) {
       setMessages((prev) => [])
+      loadProgress();
       setUpQuestion(currentQuestionIndex);
     }
   }, [currentQuestionIndex, assignment]);
+  
+  const loadProgress = async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get_progress`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.access_token}`
+      },
+      body: JSON.stringify({
+        assignment_id: assignment!.id,
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const res = await response.json()
+    setCompletedQuestions((_prev) => res.completed)
+    return true
+    }
 
   if (loading) {
     return (
@@ -493,12 +515,22 @@ export default function AssignmentPage() {
     if (!assignment || !currentQuestion || completedQuestions.includes(currentQuestion.id)) return;
     
     // Temporarily keeping this local without saving to database
-    console.log("Would save progress to database:", {
-      student_id: studentId as string,
-      assignment_id: assignment.id,
-      problem_id: currentQuestion.id,
-      completed: true
+    const { data: { session } } = await supabase.auth.getSession()
+    const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/add_progress`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.access_token}`
+      },
+      body: JSON.stringify({
+        assignment_id: assignment.id,
+        problem_id: currentQuestion.id
+      })
     });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
     
     // Just update local state for now
     setCompletedQuestions(prev => [...prev, currentQuestion.id]);
@@ -506,7 +538,7 @@ export default function AssignmentPage() {
     
     // If there are more questions, move to the next one
     if (currentQuestionIndex < assignment.questions.length - 1) {
-      goToNextQuestion();
+      setCurrentQuestionIndex(currentQuestionIndex + 1);
     } else {
       // Check if all questions are now completed
       const allCompleted = assignment.questions.every(q => 
