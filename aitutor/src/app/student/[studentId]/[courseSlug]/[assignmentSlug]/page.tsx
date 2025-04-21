@@ -49,9 +49,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import dynamic from 'next/dynamic'
-<<<<<<< Updated upstream
 import { v4 as uuidv4 } from 'uuid'
-=======
 import { Document, Page as PDFPage, pdfjs } from 'react-pdf'
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css'
 import 'react-pdf/dist/esm/Page/TextLayer.css'
@@ -61,7 +59,6 @@ import { toast } from "sonner"
 
 // Configure PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js'
->>>>>>> Stashed changes
 
 // Dynamically import the PDF viewer to avoid SSR issues
 const PDFViewer = dynamic(() => import('@/components/pdf-viewer'), { ssr: false })
@@ -773,7 +770,6 @@ export default function AssignmentPage() {
     }
   };
   
-<<<<<<< Updated upstream
   const handleCloseTab = (materialId: string) => {
     setSelectedMaterials(prev => prev.filter(material => material.id !== materialId));
   };
@@ -786,7 +782,6 @@ export default function AssignmentPage() {
       }
       return prev;
     });
-=======
   // Function to handle PDF document loading success
   const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
     setNumPages(numPages);
@@ -965,7 +960,6 @@ export default function AssignmentPage() {
     } else {
       toast.error("Please upload a PDF first");
     }
->>>>>>> Stashed changes
   };
   
   return (
@@ -1262,9 +1256,78 @@ export default function AssignmentPage() {
         <Sidebar side="right">
           <SidebarContent>
             <div className="p-4 space-y-4">
-              <h2 className="text-lg font-semibold">Questions</h2>
+            <h2 className="text-lg font-semibold">Questions</h2>
               <div className="divide-y">
                 {assignment.questions.map((question, index) => (
                   <div 
                     key={question.id} 
-                    className={`
+                    className={`py-3 flex items-center hover:bg-muted transition-colors cursor-pointer ${
+                      index === currentQuestionIndex ? 'bg-muted' : ''
+                    }`}
+                    onClick={() => setCurrentQuestionIndex(index)}
+                  >
+                    <div className="w-7 h-7 rounded-full bg-secondary text-foreground flex items-center justify-center mr-3 text-sm">
+                      {index + 1}
+                    </div>
+                    <div className="flex-1 text-sm">{question.question.length > 60 ? `${question.question.substring(0, 60)}...` : question.question}</div>
+                    {completedQuestions.includes(question.id) && (
+                      <Badge variant="outline" className="ml-2 bg-green-50 text-green-600 border-green-200">
+                        Completed
+                      </Badge>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </SidebarContent>
+        </Sidebar>
+      </div>
+      
+      {/* Assignment Completion Dialog */}
+      <Dialog open={showCompletionDialog} onOpenChange={setShowCompletionDialog}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle className="h-5 w-5 text-green-500" />
+              Assignment Completed!
+            </DialogTitle>
+            <DialogDescription>
+              Congratulations! You've completed all questions in this assignment.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-4">
+            <p className="mb-4">
+              You've successfully completed the "{assignment.name}" assignment. Your progress has been saved.
+            </p>
+            
+            {assignment?.nextAssignment && (
+              <div className="bg-muted p-4 rounded-lg mb-4">
+                <h3 className="font-medium mb-2">Next Assignment:</h3>
+                <div className="flex items-center justify-between">
+                  <span>{assignment.nextAssignment.name}</span>
+                  <MoveRight className="h-5 w-5 text-primary" />
+                </div>
+              </div>
+            )}
+          </div>
+          
+          <DialogFooter>
+            <div className="flex justify-between w-full">
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={() => setShowCompletionDialog(false)}
+              >
+                Stay Here
+              </Button>
+              <Button type="button" onClick={goToNextAssignment}>
+                {assignment?.nextAssignment ? 'Go to Next Assignment' : 'Return to Course'}
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </SidebarProvider>
+  );
+}
