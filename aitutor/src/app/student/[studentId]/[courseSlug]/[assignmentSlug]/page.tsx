@@ -253,17 +253,30 @@ export default function AssignmentPage() {
           if (problemsError) throw problemsError;
           
           // 6. Get student's progress for these questions
-          const { data: progressData, error: progressError } = await supabase
-            .from('student_progress')
-            .select('*')
-            .eq('assignment_id', assignmentData.id)
-            .eq('student_id', studentId);
+          // Instead of querying the database directly, use the getprogress Edge Function
+          const { data: { session } } = await supabase.auth.getSession()
+          const progressResponse = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get_progress`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session?.access_token}`
+            },
+            body: JSON.stringify({
+              assignment_id: assignmentData.id,
+            })
+          });
+          
+          if (!progressResponse.ok) {
+            console.error("Error fetching progress from Edge Function:", progressResponse.statusText);
+            throw new Error(`Failed to fetch progress: ${progressResponse.statusText}`);
+          }
+          
+          const progressResult = await progressResponse.json();
+          const completedProblemIds = progressResult.completed || [];
           
           // Map questions with completed status
           questions = (problemsData || []).map(problem => {
-            const isCompleted = progressData?.some(
-              progress => progress.problem_id === problem.id && progress.completed
-            ) || false;
+            const isCompleted = completedProblemIds.includes(problem.id);
             
             return {
               id: problem.id,
@@ -275,11 +288,7 @@ export default function AssignmentPage() {
           });
           
           // Initialize completedQuestions array from progress data
-          const completed = questions
-            .filter(q => q.completed)
-            .map(q => q.id);
-          
-          setCompletedQuestions(completed);
+          setCompletedQuestions(completedProblemIds);
         }
         
         // 7. Check if there's a next assignment in this course
@@ -289,7 +298,6 @@ export default function AssignmentPage() {
           .from('courses_assignments')
           .select('assignment_id')
           .eq('course_id', courseData.id)
-          .order('created_at', { ascending: true });
         
         if (!assignmentOrderError && assignmentOrder) {
           const orderedAssignmentIds = assignmentOrder.map(ca => ca.assignment_id);
@@ -782,6 +790,8 @@ export default function AssignmentPage() {
       }
       return prev;
     });
+  }
+  
   // Function to handle PDF document loading success
   const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
     setNumPages(numPages);
