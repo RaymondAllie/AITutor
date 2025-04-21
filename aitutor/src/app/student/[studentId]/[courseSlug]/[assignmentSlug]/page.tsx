@@ -28,7 +28,10 @@ import {
   CheckCircle,
   ZoomOut,
   ZoomIn,
-  RotateCw
+  RotateCw,
+  CropIcon,
+  Paperclip,
+  Save
 } from "lucide-react"
 import {
   Dialog,
@@ -46,7 +49,19 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import dynamic from 'next/dynamic'
+<<<<<<< Updated upstream
 import { v4 as uuidv4 } from 'uuid'
+=======
+import { Document, Page as PDFPage, pdfjs } from 'react-pdf'
+import 'react-pdf/dist/esm/Page/AnnotationLayer.css'
+import 'react-pdf/dist/esm/Page/TextLayer.css'
+import { ReactCrop, type Crop } from 'react-image-crop'
+import 'react-image-crop/dist/ReactCrop.css'
+import { toast } from "sonner"
+
+// Configure PDF.js worker
+pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js'
+>>>>>>> Stashed changes
 
 // Dynamically import the PDF viewer to avoid SSR issues
 const PDFViewer = dynamic(() => import('@/components/pdf-viewer'), { ssr: false })
@@ -66,6 +81,12 @@ interface Question {
   hint?: string;
   assignment_id: string;
   completed?: boolean;
+  diagram?: {
+    pageNumber: number;
+    crop: Crop;
+    imageData?: string;
+    url?: string;
+  };
 }
 
 interface Material {
@@ -115,6 +136,16 @@ export default function AssignmentPage() {
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const [selectedMaterials, setSelectedMaterials] = useState<Material[]>([]);
   const [pdfRefreshKey, setPdfRefreshKey] = useState(0);
+  
+  // PDF diagram selection state
+  const [showPdfSelector, setShowPdfSelector] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [numPages, setNumPages] = useState<number | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [crop, setCrop] = useState<Crop>();
+  const [completedCrop, setCompletedCrop] = useState<Crop>();
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [currentQuestionForDiagram, setCurrentQuestionForDiagram] = useState<Question | null>(null);
   
   const currentQuestion = assignment?.questions?.[currentQuestionIndex];
   const progress = assignment ? (completedQuestions.length / assignment.questions.length) * 100 : 0;
@@ -742,6 +773,7 @@ export default function AssignmentPage() {
     }
   };
   
+<<<<<<< Updated upstream
   const handleCloseTab = (materialId: string) => {
     setSelectedMaterials(prev => prev.filter(material => material.id !== materialId));
   };
@@ -754,6 +786,186 @@ export default function AssignmentPage() {
       }
       return prev;
     });
+=======
+  // Function to handle PDF document loading success
+  const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
+    setNumPages(numPages);
+  };
+  
+  // Function to store uploaded assignment PDF
+  const uploadAssignmentPdf = async (file: File) => {
+    try {
+      // Generate a unique filepath for the PDF
+      const fileExt = file.name.split('.').pop();
+      const filepath = `${studentId}/${assignment?.id}/${Date.now()}.${fileExt}`;
+      
+      // Convert file to ArrayBuffer for upload
+      const arrayBuffer = await file.arrayBuffer();
+      const pdfData = {
+        bytes: new Uint8Array(arrayBuffer)
+      };
+      
+      // Upload to Supabase Storage
+      const { data: _uploadData, error: uploadError } = await supabase.storage
+        .from('materialfiles')
+        .upload(filepath, pdfData.bytes, {
+          contentType: 'application/pdf',
+          cacheControl: '3600',  // Cache for 1 hour
+          upsert: false  // Don't overwrite if exists
+        });
+
+      if (uploadError) throw uploadError;
+      
+      // Get the public URL
+      const { data: { publicUrl } } = await supabase.storage
+        .from('materialfiles')
+        .getPublicUrl(filepath);
+      
+      // Set the PDF URL for viewing
+      setPdfUrl(publicUrl);
+      
+      return publicUrl;
+    } catch (err: any) {
+      console.error("Error uploading PDF:", err);
+      toast("Error uploading PDF", { 
+        description: err.message || "Failed to upload PDF",
+        action: {
+          label: "Try Again",
+          onClick: () => {}
+        }
+      });
+      return null;
+    }
+  };
+  
+  // Function to capture the selected portion of the PDF
+  const captureCrop = async () => {
+    if (!canvasRef.current || !completedCrop || !currentQuestionForDiagram) return;
+    
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    try {
+      // Get the cropped image data
+      const imageData = canvas.toDataURL('image/png');
+      
+      // Create a blob from the image data
+      const base64Data = imageData.split(',')[1];
+      if (!base64Data) return;
+      
+      const binaryData = atob(base64Data);
+      const array = new Uint8Array(binaryData.length);
+      for (let i = 0; i < binaryData.length; i++) {
+        array[i] = binaryData.charCodeAt(i);
+      }
+      
+      const blob = new Blob([array], { type: 'image/png' });
+      const file = new File([blob], `diagram-${currentQuestionForDiagram.id}.png`, { type: 'image/png' });
+      
+      // Upload the cropped image to Supabase Storage
+      const filepath = `${studentId}/${assignment?.id}/diagrams/${currentQuestionForDiagram.id}.png`;
+      
+      const { data: _uploadData, error: uploadError } = await supabase.storage
+        .from('materialfiles')
+        .upload(filepath, array, {
+          contentType: 'image/png',
+          cacheControl: '3600',
+          upsert: true
+        });
+      
+      if (uploadError) throw uploadError;
+      
+      // Get the public URL for the uploaded diagram
+      const { data: { publicUrl } } = await supabase.storage
+        .from('materialfiles')
+        .getPublicUrl(filepath);
+      
+      // Update the current question with the diagram info
+      const updatedQuestion = {
+        ...currentQuestionForDiagram,
+        diagram: {
+          pageNumber: currentPage,
+          crop: completedCrop,
+          imageData,
+          url: publicUrl
+        }
+      };
+      
+      // Update questions array in assignment
+      if (assignment) {
+        const updatedQuestions = assignment.questions.map(q => 
+          q.id === currentQuestionForDiagram.id ? updatedQuestion : q
+        );
+        
+        setAssignment({
+          ...assignment,
+          questions: updatedQuestions
+        });
+        
+        // Send diagram data to edge function
+        await sendDiagramToEdgeFunction(updatedQuestion);
+      }
+      
+      // Reset the diagram selection
+      setShowPdfSelector(false);
+      setCurrentQuestionForDiagram(null);
+      toast.success("Diagram associated with question");
+    } catch (err: any) {
+      console.error("Error saving diagram:", err);
+      toast.error("Failed to save diagram: " + (err.message || "Unknown error"));
+    }
+  };
+  
+  // Function to send diagram to edge function
+  const sendDiagramToEdgeFunction = async (question: Question) => {
+    if (!question.diagram) return;
+    
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/take_problem_diagrams`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`
+        },
+        body: JSON.stringify({
+          problem_id: question.id,
+          diagram_url: question.diagram.url,
+          diagram_page: question.diagram.pageNumber,
+          diagram_crop: question.diagram.crop
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log("Diagram data sent to edge function:", data);
+    } catch (err) {
+      console.error("Error sending diagram to edge function:", err);
+      // Continue even if edge function fails
+    }
+  };
+  
+  // Open PDF selector to select diagram for a question
+  const openDiagramSelector = async (question: Question, file?: File) => {
+    setCurrentQuestionForDiagram(question);
+    
+    if (file) {
+      // Upload the file and get public URL
+      const url = await uploadAssignmentPdf(file);
+      if (url) {
+        setPdfUrl(url);
+        setShowPdfSelector(true);
+      }
+    } else if (pdfUrl) {
+      // If PDF already uploaded, just show selector
+      setShowPdfSelector(true);
+    } else {
+      toast.error("Please upload a PDF first");
+    }
+>>>>>>> Stashed changes
   };
   
   return (
@@ -861,16 +1073,81 @@ export default function AssignmentPage() {
                     
                     {/* Message Input */}
                     <div className="border-t p-4">
-                      <form onSubmit={handleSendMessage} className="flex gap-2">
-                        <Input
-                          value={inputMessage}
-                          onChange={(e) => setInputMessage(e.target.value)}
-                          placeholder="Ask about this question..."
-                          className="flex-1"
-                        />
-                        <Button type="submit">
-                          <Send className="h-4 w-4" />
-                        </Button>
+                      <form onSubmit={handleSendMessage} className="flex flex-col gap-2">
+                        <div className="flex gap-2">
+                          <Input
+                            value={inputMessage}
+                            onChange={(e) => setInputMessage(e.target.value)}
+                            placeholder="Ask about this question..."
+                            className="flex-1"
+                          />
+                          <Button type="submit">
+                            <Send className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        
+                        <div className="flex justify-between items-center mt-2">
+                          <div className="flex items-center">
+                            <label htmlFor="pdf-upload" className="cursor-pointer">
+                              <div className="flex items-center text-xs text-primary hover:underline">
+                                <Paperclip className="h-3 w-3 mr-1" />
+                                Upload PDF
+                              </div>
+                              <input 
+                                id="pdf-upload"
+                                type="file"
+                                accept=".pdf"
+                                className="hidden"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) {
+                                    uploadAssignmentPdf(file)
+                                      .then(url => {
+                                        if (url && currentQuestion) {
+                                          toast.success("PDF uploaded successfully");
+                                        }
+                                      });
+                                  }
+                                }}
+                              />
+                            </label>
+                          </div>
+                          
+                          {pdfUrl && currentQuestion && (
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              className="text-xs h-7"
+                              onClick={() => openDiagramSelector(currentQuestion)}
+                            >
+                              <CropIcon className="h-3 w-3 mr-1" /> 
+                              {currentQuestion.diagram ? "Change Diagram" : "Add Diagram"}
+                            </Button>
+                          )}
+                        </div>
+                        
+                        {currentQuestion?.diagram?.imageData && (
+                          <div className="mt-2 border rounded-md p-2 bg-muted/50">
+                            <div className="flex justify-between items-center mb-1">
+                              <span className="text-xs font-medium">Associated Diagram</span>
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="h-6 text-xs"
+                                onClick={() => openDiagramSelector(currentQuestion)}
+                              >
+                                Change
+                              </Button>
+                            </div>
+                            <div className="flex justify-center">
+                              <img 
+                                src={currentQuestion.diagram.imageData} 
+                                alt="Question Diagram" 
+                                className="max-h-40 object-contain" 
+                              />
+                            </div>
+                          </div>
+                        )}
                       </form>
                     </div>
                   </CardContent>
@@ -990,73 +1267,4 @@ export default function AssignmentPage() {
                 {assignment.questions.map((question, index) => (
                   <div 
                     key={question.id} 
-                    className={`py-3 flex items-center hover:bg-muted transition-colors cursor-pointer ${
-                      index === currentQuestionIndex ? 'bg-muted' : ''
-                    }`}
-                    onClick={() => setCurrentQuestionIndex(index)}
-                  >
-                    <div className="w-7 h-7 rounded-full bg-secondary text-foreground flex items-center justify-center mr-3 text-sm">
-                      {index + 1}
-                    </div>
-                    <div className="flex-1 text-sm">{question.question.length > 60 ? `${question.question.substring(0, 60)}...` : question.question}</div>
-                    {completedQuestions.includes(question.id) && (
-                      <Badge variant="outline" className="ml-2 bg-green-50 text-green-600 border-green-200">
-                        Completed
-                      </Badge>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </SidebarContent>
-        </Sidebar>
-      </div>
-      
-      {/* Assignment Completion Dialog */}
-      <Dialog open={showCompletionDialog} onOpenChange={setShowCompletionDialog}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <CheckCircle className="h-5 w-5 text-green-500" />
-              Assignment Completed!
-            </DialogTitle>
-            <DialogDescription>
-              Congratulations! You've completed all questions in this assignment.
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="py-4">
-            <p className="mb-4">
-              You've successfully completed the "{assignment.name}" assignment. Your progress has been saved.
-            </p>
-            
-            {assignment?.nextAssignment && (
-              <div className="bg-muted p-4 rounded-lg mb-4">
-                <h3 className="font-medium mb-2">Next Assignment:</h3>
-                <div className="flex items-center justify-between">
-                  <span>{assignment.nextAssignment.name}</span>
-                  <MoveRight className="h-5 w-5 text-primary" />
-                </div>
-              </div>
-            )}
-          </div>
-          
-          <DialogFooter>
-            <div className="flex justify-between w-full">
-              <Button 
-                type="button" 
-                variant="outline" 
-                onClick={() => setShowCompletionDialog(false)}
-              >
-                Stay Here
-              </Button>
-              <Button type="button" onClick={goToNextAssignment}>
-                {assignment?.nextAssignment ? 'Go to Next Assignment' : 'Return to Course'}
-              </Button>
-            </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </SidebarProvider>
-  );
-}
+                    className={`

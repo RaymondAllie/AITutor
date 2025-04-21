@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -36,8 +36,17 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
+import { Document, Page as PDFPage, pdfjs } from 'react-pdf'
+import 'react-pdf/dist/esm/Page/AnnotationLayer.css'
+import 'react-pdf/dist/esm/Page/TextLayer.css'
+import { ReactCrop, Crop } from 'react-image-crop'
+import 'react-image-crop/dist/ReactCrop.css'
 
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+
+// Initialize PDF.js worker (add this near the top)
+// Use a local worker file instead of CDN to avoid the error
+pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js'
 
 // Define interfaces to match your database schema
 interface Material {
@@ -52,6 +61,11 @@ interface Problem {
   id: string
   question: string
   assignment_id: string
+  diagram?: {
+    pageNumber: number
+    crop: Crop
+    imageData?: string
+  }
 }
 
 interface Assignment {
@@ -111,6 +125,23 @@ export default function CoursePage() {
   const [editingProblem, setEditingProblem] = useState<{id: string, text: string} | null>(null)
   const [isLoadingProblems, setIsLoadingProblems] = useState(false)
   const [problemsError, setProblemsError] = useState<string | null>(null)
+
+  // Add new state for PDF handling
+  const [pdfFile, setPdfFile] = useState<File | null>(null)
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null)
+  const [numPages, setNumPages] = useState<number | null>(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [showPdfSelector, setShowPdfSelector] = useState(false)
+  const [currentProblemForDiagram, setCurrentProblemForDiagram] = useState<Problem | null>(null)
+  const [crop, setCrop] = useState<Crop>()
+  const [completedCrop, setCompletedCrop] = useState<Crop>()
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  // Add this to the state declarations
+  const [showInsightsPanel, setShowInsightsPanel] = useState(false);
+  const [currentAssignmentForInsights, setCurrentAssignmentForInsights] = useState<Assignment | null>(null);
+  const [insightsLoading, setInsightsLoading] = useState(false);
+  const [insightsError, setInsightsError] = useState<string | null>(null);
 
   // Open materials dialog for an assignment
   const openMaterialsDialog = (assignmentId: string) => {
@@ -413,7 +444,7 @@ export default function CoursePage() {
       
       if (error) throw error
       
-      // Update the local state
+      // Update the local state, preserving any diagram information
       setProblems(problems.map(problem => 
         problem.id === editingProblem.id 
           ? { ...problem, question: editingProblem.text }
@@ -471,6 +502,160 @@ export default function CoursePage() {
       toast.error("Failed to delete problem")
     }
   }
+  
+  // Function to handle PDF document loading
+  const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
+    setNumPages(numPages)
+  }
+
+  // Function to get material for current assignment
+  const getMaterialForCurrentAssignment = () => {
+    if (!currentAssignmentForProblems || !course) return null
+    
+    // Find PDF material attached to this assignment
+    const materialIds = currentAssignmentForProblems.material_ids || []
+    const pdfMaterials = course.materials.filter(m => 
+      materialIds.includes(m.id) && m.type.includes('pdf')
+    )
+    
+    return pdfMaterials[0] || null
+  }
+
+  // Function to load PDF from Supabase storage
+  const loadPdfFromStorage = async (materialId: string) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from('materials')
+        .download(`${materialId}.pdf`)
+        
+      if (error) throw error
+      
+      const fileUrl = URL.createObjectURL(data)
+      setPdfUrl(fileUrl)
+    } catch (err) {
+      console.error("Error loading PDF:", err)
+      toast.error("Failed to load PDF file")
+    }
+  }
+
+  // Function to capture the selected portion of the PDF
+  const captureCrop = () => {
+    if (!canvasRef.current || !completedCrop) return
+    
+    const canvas = canvasRef.current
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    
+    // Get the cropped image data
+    const imageData = canvas.toDataURL('image/png')
+    
+    // Update the current problem with the diagram info
+    if (currentProblemForDiagram) {
+      const updatedProblem = {
+        ...currentProblemForDiagram,
+        diagram: {
+          pageNumber: currentPage,
+          crop: completedCrop,
+          imageData
+        }
+      }
+      
+      // Update problems array
+      setProblems(problems.map(p => 
+        p.id === currentProblemForDiagram.id ? updatedProblem : p
+      ))
+      
+      // Save to database
+      saveDiagramForProblem(updatedProblem)
+      
+      // Reset the diagram selection
+      setShowPdfSelector(false)
+      setCurrentProblemForDiagram(null)
+      toast.success("Diagram associated with question")
+    }
+  }
+
+  // Function to save diagram to database
+  const saveDiagramForProblem = async (problem: Problem) => {
+    if (!problem.diagram) return
+    
+    try {
+      // Create a file from the image data
+      const base64Data = problem.diagram.imageData?.split(',')[1]
+      if (!base64Data) return
+      
+      const binaryData = atob(base64Data)
+      const array = new Uint8Array(binaryData.length)
+      for (let i = 0; i < binaryData.length; i++) {
+        array[i] = binaryData.charCodeAt(i)
+      }
+      const blob = new Blob([array], { type: 'image/png' })
+      const file = new File([blob], `diagram-${problem.id}.png`, { type: 'image/png' })
+      
+      // Upload to Supabase storage
+      const { data, error } = await supabase.storage
+        .from('diagrams')
+        .upload(`problems/${problem.id}/diagram.png`, file)
+        
+      if (error) throw error
+      
+      // Update the problem record with the diagram URL
+      const { error: updateError } = await supabase
+        .from('problems')
+        .update({ 
+          diagram_path: data.path,
+          diagram_page: problem.diagram.pageNumber,
+          diagram_crop: JSON.stringify(problem.diagram.crop)
+        })
+        .eq('id', problem.id)
+        
+      if (updateError) throw updateError
+      
+    } catch (err: any) {
+      console.error("Error saving diagram:", err)
+      toast.error("Failed to save diagram")
+    }
+  }
+
+  // Function to open the PDF selector for a problem
+  const openDiagramSelector = (problem: Problem) => {
+    const material = getMaterialForCurrentAssignment()
+    if (!material) {
+      toast.error("No PDF material attached to this assignment")
+      return
+    }
+    
+    setCurrentProblemForDiagram(problem)
+    loadPdfFromStorage(material.id)
+    setShowPdfSelector(true)
+  }
+  
+  // Add this new function to load insights data for an assignment
+  const openInsightsPanel = async (assignmentId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const assignment = course?.assignments.find(a => a.id === assignmentId);
+    if (assignment) {
+      setCurrentAssignmentForInsights(assignment);
+      setShowInsightsPanel(true);
+      setInsightsLoading(true);
+      setInsightsError(null);
+      
+      try {
+        // In a real implementation, you would fetch real insights data here
+        // This is a mock implementation for demonstration purposes
+        
+        // Simulate API call delay
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // For now, we'll just use mock data
+        setInsightsLoading(false);
+      } catch (err: any) {
+        console.error("Error loading insights:", err);
+        setInsightsError(err.message || "Failed to load insights");
+        setInsightsLoading(false);
+      }
+    }
+  };
   
   useEffect(() => {
     const fetchCourseData = async () => {
@@ -769,9 +954,9 @@ export default function CoursePage() {
                         size="sm" 
                         variant="outline" 
                         className="bg-gray-100 text-black hover:bg-gray-200"
-                        onClick={(e) => e.stopPropagation()}
+                        onClick={(e) => openInsightsPanel(assignment.id, e)}
                       >
-                        View Chatbot Logs
+                        View Insights
                       </Button>
                       <div className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
                         Due: {formatDate(assignment.due_date)}
@@ -1071,7 +1256,7 @@ export default function CoursePage() {
       
       {/* Problems Dialog */}
       <Dialog open={problemsDialogOpen} onOpenChange={setProblemsDialogOpen}>
-        <DialogContent className="sm:max-w-[700px]">
+        <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               Problems for: {currentAssignmentForProblems?.name}
@@ -1081,7 +1266,7 @@ export default function CoursePage() {
             </DialogDescription>
           </DialogHeader>
           
-          <div className="py-4 space-y-4 max-h-[70vh] overflow-y-auto">
+          <div className="py-4 space-y-4">
             {isLoadingProblems ? (
               <div className="flex justify-center py-8">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -1138,26 +1323,61 @@ export default function CoursePage() {
                             </div>
                           </div>
                         ) : (
-                          <div className="flex justify-between items-start">
-                            <div className="flex-1 pr-4">
-                              <p className="text-gray-800">{problem.question}</p>
+                          <div className="space-y-3">
+                            <div className="flex justify-between items-start">
+                              <div className="flex-1 pr-4">
+                                <p className="text-gray-800">{problem.question}</p>
+                              </div>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon" 
+                                  onClick={() => setEditingProblem({id: problem.id, text: problem.question})}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon"
+                                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                  onClick={() => handleDeleteProblem(problem.id)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-1 shrink-0">
-                              <Button 
-                                variant="ghost" 
-                                size="icon" 
-                                onClick={() => setEditingProblem({id: problem.id, text: problem.question})}
-                              >
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                              <Button 
-                                variant="ghost" 
-                                size="icon"
-                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                onClick={() => handleDeleteProblem(problem.id)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
+                            
+                            {/* Diagram section */}
+                            <div className="mt-2">
+                              {problem.diagram?.imageData ? (
+                                <div className="border p-2 rounded bg-white">
+                                  <div className="flex justify-between items-center mb-2">
+                                    <span className="text-sm font-medium">Associated Diagram</span>
+                                    <Button 
+                                      variant="ghost" 
+                                      size="sm" 
+                                      onClick={() => openDiagramSelector(problem)}
+                                    >
+                                      Change
+                                    </Button>
+                                  </div>
+                                  <img 
+                                    src={problem.diagram.imageData} 
+                                    alt="Diagram" 
+                                    className="max-h-40 object-contain mx-auto"
+                                  />
+                                </div>
+                              ) : (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => openDiagramSelector(problem)}
+                                  className="w-full"
+                                >
+                                  <Paperclip className="h-4 w-4 mr-2" />
+                                  Associate Diagram from PDF
+                                </Button>
+                              )}
                             </div>
                           </div>
                         )}
@@ -1193,6 +1413,264 @@ export default function CoursePage() {
               variant="outline"
             >
               Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* PDF Diagram Selector Dialog */}
+      <Dialog open={showPdfSelector} onOpenChange={setShowPdfSelector}>
+        <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Select Diagram from PDF</DialogTitle>
+            <DialogDescription>
+              Navigate to the page containing the diagram, then select and crop the area you want to associate with the question.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-4 space-y-4">
+            {pdfUrl ? (
+              <div className="space-y-3">
+                <div className="flex justify-between items-center mb-2">
+                  <div className="flex items-center gap-2">
+                    <Button 
+                      variant="outline" 
+                      onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                      disabled={currentPage <= 1}
+                    >
+                      Previous
+                    </Button>
+                    <span className="text-sm">
+                      Page {currentPage} of {numPages || '?'}
+                    </span>
+                    <Button 
+                      variant="outline" 
+                      onClick={() => setCurrentPage(prev => Math.min(prev + 1, numPages || prev))}
+                      disabled={currentPage >= (numPages || 1)}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                  
+                  <div>
+                    <span className="text-sm mr-2">Current question:</span>
+                    <span className="font-medium text-sm">
+                      {currentProblemForDiagram?.question.substring(0, 50)}
+                      {currentProblemForDiagram?.question.length ? '...' : ''}
+                    </span>
+                  </div>
+                </div>
+                
+                <div className="border rounded-md overflow-hidden">
+                  <Document
+                    file={pdfUrl}
+                    onLoadSuccess={onDocumentLoadSuccess}
+                    className="pdf-document"
+                  >
+                    <ReactCrop
+                      crop={crop}
+                      onChange={c => setCrop(c)}
+                      onComplete={c => setCompletedCrop(c)}
+                      aspect={undefined}
+                    >
+                      <PDFPage 
+                        pageNumber={currentPage} 
+                        renderTextLayer={false}
+                        renderAnnotationLayer={false}
+                        canvasRef={canvasRef}
+                        width={800}
+                      />
+                    </ReactCrop>
+                  </Document>
+                </div>
+                
+                <div className="text-sm text-gray-500 mt-1">
+                  Click and drag to select the diagram area
+                </div>
+              </div>
+            ) : (
+              <div className="flex justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              </div>
+            )}
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowPdfSelector(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={captureCrop}
+              disabled={!completedCrop}
+            >
+              Associate Diagram
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Assignment Insights Dialog */}
+      <Dialog open={showInsightsPanel} onOpenChange={setShowInsightsPanel}>
+        <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              Insights for: {currentAssignmentForInsights?.name}
+            </DialogTitle>
+            <DialogDescription>
+              View analytics and student performance data for this assignment.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-4 space-y-6">
+            {insightsLoading ? (
+              <div className="flex justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              </div>
+            ) : insightsError ? (
+              <div className="text-center py-6 text-red-600">
+                <p>{insightsError}</p>
+                <Button 
+                  className="mt-4" 
+                  variant="outline" 
+                  size="sm"
+                  onClick={(e) => currentAssignmentForInsights && openInsightsPanel(currentAssignmentForInsights.id, e as any)}
+                >
+                  Try Again
+                </Button>
+              </div>
+            ) : (
+              <>
+                {/* Completion Rate Card */}
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-lg">Completion Rate</CardTitle>
+                    <CardDescription>
+                      Percentage of students who have completed the assignment
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center justify-between">
+                      <div className="text-4xl font-bold text-blue-600">64%</div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-gray-500">16 of 25 students</span>
+                        <div className="w-32 h-2 rounded-full bg-gray-200">
+                          <div className="h-full rounded-full bg-blue-600 w-[64%]"></div>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                
+                {/* Question Performance Card */}
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-lg">Question Completion</CardTitle>
+                    <CardDescription>
+                      Average completion by question
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {/* Mock data for questions */}
+                      {[
+                        { id: 1, question: "What is the capital of France?", completion: 92 },
+                        { id: 2, question: "Explain Newton's First Law of Motion", completion: 78 },
+                        { id: 3, question: "Solve for x: 2x + 5 = 15", completion: 84 },
+                        { id: 4, question: "What is the main theme of The Great Gatsby?", completion: 45 },
+                        { id: 5, question: "Describe the structure of DNA", completion: 38 }
+                      ].map(q => (
+                        <div key={q.id} className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <div className="text-sm font-medium truncate max-w-[70%]" title={q.question}>
+                              {q.question}
+                            </div>
+                            <div className="text-sm">{q.completion}%</div>
+                          </div>
+                          <div className="w-full h-2 rounded-full bg-gray-200">
+                            <div 
+                              className={`h-full rounded-full ${
+                                q.completion > 80 ? 'bg-green-600' : 
+                                q.completion > 60 ? 'bg-blue-600' : 
+                                q.completion > 40 ? 'bg-yellow-600' : 'bg-red-600'
+                              }`}
+                              style={{ width: `${q.completion}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+                
+                {/* Time Spent Card */}
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-lg">Average Time Spent</CardTitle>
+                    <CardDescription>
+                      How long students spend on each question
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <div>Average time per question</div>
+                        <div className="font-semibold">8m 24s</div>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <div>Total average assignment time</div>
+                        <div className="font-semibold">42m 12s</div>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <div>Longest question on average</div>
+                        <div className="font-semibold">Question 4 (12m 38s)</div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                
+                {/* Common Issues Card */}
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-lg">Common Issues</CardTitle>
+                    <CardDescription>
+                      Topics students frequently need help with
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center px-3 py-2 bg-yellow-50 border border-yellow-200 rounded-md">
+                        <div className="font-medium">Literary Analysis</div>
+                        <div className="text-sm">78% of students struggled</div>
+                      </div>
+                      <div className="flex justify-between items-center px-3 py-2 bg-red-50 border border-red-200 rounded-md">
+                        <div className="font-medium">DNA Structure</div>
+                        <div className="text-sm">65% of students struggled</div>
+                      </div>
+                      <div className="flex justify-between items-center px-3 py-2 bg-blue-50 border border-blue-200 rounded-md">
+                        <div className="font-medium">Algebraic Equations</div>
+                        <div className="text-sm">32% of students struggled</div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
+            )}
+          </div>
+          
+          <DialogFooter>
+            <Button 
+              onClick={() => setShowInsightsPanel(false)}
+              variant="outline"
+            >
+              Close
+            </Button>
+            <Button 
+              onClick={() => {
+                // This would be the export functionality in a real app
+                toast.success("Insights exported successfully");
+              }}
+            >
+              Export Insights
             </Button>
           </DialogFooter>
         </DialogContent>

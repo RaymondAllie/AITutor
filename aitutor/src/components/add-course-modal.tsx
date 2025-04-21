@@ -619,7 +619,7 @@ export function AddCourseModal({ isOpen, onClose, userId, onCourseCreated }: Add
                     <Label htmlFor="materialName" className="text-right">
                       Material Name
                     </Label>
-                    <Input
+                  <Input
                       id="materialName"
                       value={materialName}
                       onChange={(e) => setMaterialName(e.target.value)}
@@ -632,17 +632,17 @@ export function AddCourseModal({ isOpen, onClose, userId, onCourseCreated }: Add
                     <Label htmlFor="materialType" className="text-right">
                       Type
                     </Label>
-                    <select
+                  <select
                       id="materialType"
                       value={materialType}
                       onChange={(e) => setMaterialType(e.target.value as Material["type"])}
                       className="col-span-3 border rounded p-2 text-sm font-normal text-gray-600"
-                    >
-                      <option value="textbook">Textbook</option>
-                      <option value="powerpoint">PowerPoint</option>
-                      <option value="pset">Problem Set</option>
-                      <option value="other">Other</option>
-                    </select>
+                  >
+                    <option value="textbook">Textbook</option>
+                    <option value="powerpoint">PowerPoint</option>
+                    <option value="pset">Problem Set</option>
+                    <option value="other">Other</option>
+                  </select>
                   </div>
                   
                   <div className="grid grid-cols-4 items-center gap-4">
@@ -650,9 +650,9 @@ export function AddCourseModal({ isOpen, onClose, userId, onCourseCreated }: Add
                       File (PDF)
                     </Label>
                     <div className="col-span-3">
-                      <Input
+                  <Input
                         id="materialFile"
-                        type="file"
+                    type="file"
                         accept=".pdf"
                         onChange={(e) => handleFileChange(e, 'material')}
                         className="flex-grow"
@@ -737,7 +737,7 @@ export function AddCourseModal({ isOpen, onClose, userId, onCourseCreated }: Add
                       Assignment PDF
                     </Label>
                     <div className="col-span-3">
-                      <Input
+                  <Input
                         id="assignmentFile"
                         type="file"
                         accept=".pdf"
@@ -799,8 +799,8 @@ export function AddCourseModal({ isOpen, onClose, userId, onCourseCreated }: Add
                           onChange={(e) => handleQuestionEdit(index, e.target.value)}
                           className="w-full min-h-[100px] p-2 border rounded-md text-sm"
                         />
-                      </div>
-                    ))}
+                </div>
+              ))}
                   </div>
                 </div>
               )}
@@ -878,12 +878,12 @@ export function AddCourseModal({ isOpen, onClose, userId, onCourseCreated }: Add
           <DialogFooter className="mt-6">
             {step < 4 ? (
               <>
-                {step > 1 && (
-                  <Button type="button" variant="outline" onClick={handlePreviousStep}>
+            {step > 1 && (
+              <Button type="button" variant="outline" onClick={handlePreviousStep}>
                     Back
-                  </Button>
-                )}
-                {step < 3 ? (
+              </Button>
+            )}
+            {step < 3 ? (
                   <Button 
                     type="button" 
                     onClick={handleNextStep}
@@ -902,7 +902,7 @@ export function AddCourseModal({ isOpen, onClose, userId, onCourseCreated }: Add
                       : (questionsGenerated && generatedQuestions.length > 0) 
                         ? "Next" 
                         : "Please Generate Questions First"}
-                  </Button>
+              </Button>
                 )}
               </>
             ) : (
