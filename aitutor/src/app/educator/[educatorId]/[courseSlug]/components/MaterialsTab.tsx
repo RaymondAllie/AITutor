@@ -10,6 +10,8 @@ import { PlusCircle, Book, FileText, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { Material, Course } from "../types"
 import { useRouter } from "next/navigation"
+import { useAuth } from "@/contexts/auth-context"
+import { EdgeFunctions } from "@/lib/edge-functions"
 
 interface MaterialsTabProps {
   course: Course
@@ -23,6 +25,7 @@ export function MaterialsTab({ course, setCourse, supabaseAnonKey }: MaterialsTa
   const [newMaterial, setNewMaterial] = useState({ name: "", type: "resource" })
   const [isUploading, setIsUploading] = useState(false)
   const router = useRouter()
+  const { fetchWithAuth } = useAuth()
 
   // Add new material
   const handleAddMaterial = async () => {
@@ -69,35 +72,15 @@ export function MaterialsTab({ course, setCourse, supabaseAnonKey }: MaterialsTa
       // Add the JSON data as a string value
       formData.append('data', materialData)
       
-      // Send the request - Do NOT set the Content-Type header for multipart/form-data
-      const response = await fetch('https://yhqxnhbpxjslmiwtfkez.supabase.co/functions/v1/material_upload', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${supabaseAnonKey}`
-        },
-        body: formData
-      })
+      // Use EdgeFunctions.uploadFile helper
+      const response = await EdgeFunctions.uploadFile(fetchWithAuth, formData)
       
-      // Try to get response text for better error reporting
-      const responseText = await response.text()
-      
-      if (!response.ok) {
-        let errorMessage = 'Failed to upload material'
-        try {
-          const errorData = JSON.parse(responseText)
-          errorMessage = errorData.message || errorMessage
-        } catch (e) {
-          // If we can't parse JSON, use the response text
-          errorMessage = responseText || errorMessage
-        }
-        throw new Error(errorMessage)
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to upload material')
       }
       
-      // Parse the response
-      const data = JSON.parse(responseText)
-      
       // Update local state with the new material
-      const newMaterialWithId = data.material as Material
+      const newMaterialWithId = response.material as Material
       
       setCourse({
         ...course,

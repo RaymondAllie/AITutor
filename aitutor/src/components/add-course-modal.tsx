@@ -10,6 +10,8 @@ import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { AlertCircle } from "lucide-react"
 import { toast } from "sonner"
+import { useAuth } from "@/contexts/auth-context"
+import { callEdgeFunction } from "@/lib/edge-functions"
 
 // Get environment variables
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -28,6 +30,7 @@ export function AddCourseModal({ isOpen, onClose, userId, onCourseCreated }: Add
   const [courseDescription, setCourseDescription] = useState("")
   const [isCreating, setIsCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { fetchWithAuth } = useAuth()
 
   const createCourse = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -61,36 +64,21 @@ export function AddCourseModal({ isOpen, onClose, userId, onCourseCreated }: Add
         join_code: join_code
       }
       
-      // Call the Supabase Edge Function
-      const response = await fetch('https://yhqxnhbpxjslmiwtfkez.supabase.co/functions/v1/add_course', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseAnonKey}`
-        },
-        body: JSON.stringify(courseData)
-      })
+      // Call the Supabase Edge Function with fetchWithAuth
+      const response = await callEdgeFunction(fetchWithAuth, "add_course", courseData);
       
-      const response2 = await fetch('https://yhqxnhbpxjslmiwtfkez.supabase.co/functions/v1/add_user_to_course', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseAnonKey}`
-        },
-        body: JSON.stringify({
-          course_id: courseUuid,
-          user_id: userId
-        })
-      }) 
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.message || 'Failed to create course')
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to create course');
       }
-
-      if (!response2.ok) {
-        const errorData = await response2.json().catch(() => ({}))
-        throw new Error(errorData.message || 'Failed to add user to course')
+      
+      // Add user to course
+      const response2 = await callEdgeFunction(fetchWithAuth, "add_user_to_course", {
+        course_id: courseUuid,
+        user_id: userId
+      });
+      
+      if (!response2.success) {
+        throw new Error(response2.error || 'Failed to add user to course');
       }
       
       // Close the modal

@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { AlertCircle, CheckCircle } from "lucide-react"
 import { supabase } from "@/lib/supabase"
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+import { useAuth } from "@/contexts/auth-context"
+import { callEdgeFunction } from "@/lib/edge-functions"
 
 interface JoinCourseModalProps {
   isOpen: boolean
@@ -24,6 +25,7 @@ export function JoinCourseModal({ isOpen, onClose, userId, onCourseJoined }: Joi
   const [isComplete, setIsComplete] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [joinedCourse, setJoinedCourse] = useState<{ id: string, name: string, slug: string } | null>(null)
+  const { fetchWithAuth } = useAuth()
   
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -58,19 +60,15 @@ export function JoinCourseModal({ isOpen, onClose, userId, onCourseJoined }: Joi
         throw new Error("You are already enrolled in this course.")
       }
       
-      // Create the relationship in the users_courses join table
-      const response = await fetch('https://yhqxnhbpxjslmiwtfkez.supabase.co/functions/v1/add_user_to_course', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseAnonKey}`
-        },
-        body: JSON.stringify({
-          course_id: courseData.id,
-          user_id: userId
-        })
-      }) 
-
+      // Create the relationship in the users_courses join table using fetchWithAuth
+      const response = await callEdgeFunction(fetchWithAuth, "add_user_to_course", {
+        course_id: courseData.id,
+        user_id: userId
+      });
+      
+      if (!response.success) {
+        throw new Error(response.error || "Failed to join course");
+      }
       
       // Generate a slug for the course name
       const courseSlug = courseData.name.toLowerCase().replace(/\s+/g, '-')

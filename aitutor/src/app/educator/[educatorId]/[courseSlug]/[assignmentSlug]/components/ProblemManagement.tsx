@@ -8,6 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { PlusCircle, MessageCircle, Image, Edit, Trash2 } from "lucide-react";
+import { useAuth } from "@/contexts/auth-context";
+import { callEdgeFunction } from "@/lib/edge-functions";
 
 interface ProblemManagementProps {
   problems: Problem[];
@@ -28,30 +30,27 @@ const ProblemManagement: React.FC<ProblemManagementProps> = ({
   const [editingProblem, setEditingProblem] = useState<{id: string, question: string, answer?: string} | null>(null);
   const [newProblem, setNewProblem] = useState("");
   const [newAnswer, setNewAnswer] = useState("");
+  const { fetchWithAuth } = useAuth();
 
   // Add a new problem
   const handleAddProblem = async () => {
     if (!assignmentId || !newProblem.trim()) return;
     
     try {
-      // Use the Edge Function instead of direct database access
-      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/add_new_problem`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseAnonKey}`
-        },
-        body: JSON.stringify({
+      // Use the Edge Function with fetchWithAuth
+      const response = await callEdgeFunction(
+        fetchWithAuth,
+        "add_new_problem",
+        {
           assignment_id: assignmentId,
           new_problem: newProblem,
           answer: newAnswer.trim() || null,
           i: problems.length // Use the current length as index
-        })
-      });
+        }
+      );
       
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to add problem');
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to add problem');
       }
       
       // Get the problem data from the join table and problems table

@@ -11,6 +11,8 @@ import { ReactCrop, Crop } from 'react-image-crop'
 import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
 import { Course, Problem, Assignment } from "../types"
+import { useAuth } from "@/contexts/auth-context"
+import { callEdgeFunction } from "@/lib/edge-functions"
 
 // Initialize PDF.js worker (add this near the top)
 // Use a local worker file instead of CDN to avoid the error
@@ -39,6 +41,7 @@ export function ProblemsDialog({
   const [editingProblem, setEditingProblem] = useState<{id: string, text: string} | null>(null)
   const [isLoadingProblems, setIsLoadingProblems] = useState(false)
   const [problemsError, setProblemsError] = useState<string | null>(null)
+  const { fetchWithAuth } = useAuth()
 
   // PDF diagram state
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
@@ -102,24 +105,20 @@ export function ProblemsDialog({
     if (!currentAssignment || !newProblem.trim()) return
     
     try {
-      // Use the Edge Function instead of direct database access
-      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/add_new_problem`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseAnonKey}`
-        },
-        body: JSON.stringify({
+      // Use the Edge Function with fetchWithAuth
+      const response = await callEdgeFunction(
+        fetchWithAuth,
+        "add_new_problem",
+        {
           assignment_id: currentAssignment.id,
           new_problem: newProblem,
           answer: newAnswer.trim() || null,
           i: problems.length // Use the current length as index
-        })
-      });
+        }
+      );
       
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to add problem');
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to add problem');
       }
       
       // Get the problem data from the join table and problems table

@@ -56,6 +56,7 @@ import 'react-pdf/dist/esm/Page/TextLayer.css'
 import { ReactCrop, type Crop } from 'react-image-crop'
 import 'react-image-crop/dist/ReactCrop.css'
 import { toast } from "sonner"
+import { useAuth } from "@/contexts/auth-context"
 
 // Configure PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js'
@@ -147,6 +148,8 @@ export default function AssignmentPage() {
   const currentQuestion = assignment?.questions?.[currentQuestionIndex];
   const progress = assignment ? (completedQuestions.length / assignment.questions.length) * 100 : 0;
   const allQuestionsCompleted = assignment ? completedQuestions.length === assignment.questions.length : false;
+  
+  const { fetchWithAuth, user } = useAuth();
   
   const createMessage = (role: MessageRole, content: string): Message => {
     return {
@@ -704,29 +707,54 @@ export default function AssignmentPage() {
     
     return text;
   }
-  // Generate a mock AI response based on the user's message and current question
+  // Stream response from AI
   const streamResponse = async () => {
-    console.log(messages)
-    const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/chat`, {
-      method: 'POST', // or 'GET' depending on your function
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`
-      },
-      body: JSON.stringify({
-        messages: messages
-      }) // Your function's data payload
-    });
-    const text = await handleStream(response.body);
-    const message = createMessage('assistant', text);
-    setMessages((prev) => [...prev.slice(0, -1), message])
-    if (currentQuestion) {
-      const success = await saveMessage(message, currentQuestion)
-      console.log(success)
-    } else {
-      throw new Error("Question didn't load")
+    if (!currentQuestion || !messages.length || responseInProgress) return;
+    
+    setResponseInProgress(true);
+    setPartialResponse("");
+    
+    try {
+      // Prepare the context and messages
+      const context = await pullContext(messages[messages.length - 1].content, 3);
+      
+      const payload = {
+        messages: messages,
+        context: context || [],
+        settings: {
+          temperature: 0.3,
+          model: "gpt-3.5-turbo" // Example model
+        },
+        assignment_id: assignment?.id,
+        question_id: currentQuestion.id,
+        student_id: params.studentId
+      };
+      
+      // Use fetchWithAuth to call the chat edge function
+      const response = await fetchWithAuth("/functions/v1/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+      
+      // Check for streaming vs non-streaming response
+      if (response.stream) {
+        await handleStream(response.stream);
+      } else if (response.success && response.answer) {
+        const assistantMessage = createMessage("assistant", response.answer);
+        setMessages(prev => [...prev, assistantMessage]);
+        saveMessage(assistantMessage, currentQuestion);
+      } else {
+        throw new Error(response.error || "Failed to get response");
+      }
+    } catch (error) {
+      console.error("Error getting response:", error);
+      toast.error("Failed to generate a response");
+    } finally {
+      setResponseInProgress(false);
     }
-    return message;
   };
 
   const getMessages = async (problemId: string) => {
@@ -924,32 +952,42 @@ export default function AssignmentPage() {
   
   // Function to send diagram to edge function
   const sendDiagramToEdgeFunction = async (question: Question) => {
-    if (!question.diagram) return;
+    if (!question.diagram || !question.diagram.imageData) return;
     
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/take_problem_diagrams`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`
-        },
-        body: JSON.stringify({
-          problem_id: question.id,
-          diagram_url: question.diagram.url,
-          diagram_page: question.diagram.pageNumber,
-          diagram_crop: question.diagram.crop
-        })
+      // Create a FormData object for the upload
+      const formData = new FormData();
+      
+      // Convert base64 to a file
+      const base64Response = await fetch(question.diagram.imageData);
+      const blob = await base64Response.blob();
+      const file = new File([blob], "diagram.png", { type: "image/png" });
+      
+      // Add the image file
+      formData.append("image", file);
+      
+      // Add question and assignment data
+      formData.append("data", JSON.stringify({
+        question_id: question.id,
+        assignment_id: assignment?.id
+      }));
+      
+      // Use fetchWithAuth to call the edge function
+      const response = await fetchWithAuth("/functions/v1/save_question_diagram", {
+        method: "POST",
+        body: formData
       });
       
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      if (!response.success) {
+        throw new Error(response.error || "Failed to save diagram");
       }
       
-      const data = await response.json();
-      console.log("Diagram data sent to edge function:", data);
-    } catch (err) {
-      console.error("Error sending diagram to edge function:", err);
-      // Continue even if edge function fails
+      console.log("Diagram saved:", response);
+      return response.url;
+    } catch (error) {
+      console.error("Error saving diagram:", error);
+      toast.error("Failed to save diagram to storage");
+      return null;
     }
   };
   
