@@ -131,6 +131,8 @@ export default function AssignmentPage() {
   const [inputMessage, setInputMessage] = useState('');
   const [showCompletionDialog, setShowCompletionDialog] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [responseInProgress, setResponseInProgress] = useState(false);
+  const [partialResponse, setPartialResponse] = useState('');
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const [selectedMaterials, setSelectedMaterials] = useState<Material[]>([]);
   const [pdfRefreshKey, setPdfRefreshKey] = useState(0);
@@ -258,23 +260,18 @@ export default function AssignmentPage() {
           // 6. Get student's progress for these questions
           // Instead of querying the database directly, use the getprogress Edge Function
           const { data: { session } } = await supabase.auth.getSession()
-          const progressResponse = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get_progress`, {
+          
+          
+          const progressResult = await fetchWithAuth(`/functions/v1/get_progress`, {
             method: 'POST',
             headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${session?.access_token}`
+              'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-              assignment_id: assignmentData.id,
+              assignment_id: assignmentData.id
             })
-          });
+          })
           
-          if (!progressResponse.ok) {
-            console.error("Error fetching progress from Edge Function:", progressResponse.statusText);
-            throw new Error(`Failed to fetch progress: ${progressResponse.statusText}`);
-          }
-          
-          const progressResult = await progressResponse.json();
           const completedProblemIds = progressResult.completed || [];
           
           // Map questions with completed status
@@ -410,22 +407,17 @@ export default function AssignmentPage() {
   }, [currentQuestionIndex, assignment]);
   
   const loadProgress = async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get_progress`, {
+    
+    const res = await fetchWithAuth(`/functions/v1/get_progress`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session?.access_token}`
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        assignment_id: assignment!.id,
+        assignment_id: assignment!.id
       })
-    });
+    })
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const res = await response.json()
     setCompletedQuestions((_prev) => res.completed)
     return true
     }
@@ -499,30 +491,26 @@ export default function AssignmentPage() {
     const previous = await getMessages(currentQuestion.id)
 
     setMessages((prev) => [
-      createMessage("system", "You are a helpful AI tutor meant to help a student with any problems they need answered, guide them through solutions, don't tell them the answer, you objective to get students to actually learn the material being presented. Keep your answers short and to the point, dont show emotion and eliminate the fluff"),
+      ...previous,
       createMessage("system", `Here is some context to the question you are trying to help the student through, use if applicable:\n\n${context.join("\n\n")}`),
-      createMessage("assistant", `Question ${currentQuestionIndex + 1}: "${assignment.questions[currentQuestionIndex].question}"`),
-      ...previous
     ])
   }
 
   const pullContext = async (text: string, max_matches: number) => {
     console.log("sending request on text")
     console.log(text)
-    const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/pull_context`, {
-      method: 'POST', // or 'GET' depending on your function
+    
+    const body = await fetchWithAuth(`/functions/v1/pull_context`, {
+      method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         course_id: "REPLACE WITH COURSE ID",//   *********** needs to be edited ************
         text: text,
         max_matches: max_matches
-      }) // Your function's data payload
-    });
-    console.log(res);
-    const body = await res.json();
+      })
+    })
 
     return body;
   }
@@ -554,22 +542,19 @@ export default function AssignmentPage() {
     if (!assignment || !currentQuestion || completedQuestions.includes(currentQuestion.id)) return;
     
     // Temporarily keeping this local without saving to database
-    const { data: { session } } = await supabase.auth.getSession()
-    const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/add_progress`, {
+
+
+    const _add = await fetchWithAuth(`/functions/v1/add_progress`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session?.access_token}`
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         assignment_id: assignment.id,
         problem_id: currentQuestion.id
       })
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
+    })
+    
     
     // Just update local state for now
     setCompletedQuestions(prev => [...prev, currentQuestion.id]);
@@ -596,20 +581,16 @@ export default function AssignmentPage() {
       const msgs = JSON.parse(JSON.stringify(messages))
       setMessages((prev) => [])
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/remove_messages`, {
+  
+      const _remove = await fetchWithAuth(`/functions/v1/remove_messages`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           messages: msgs
         })
-      });
-  
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
+      })
       
        const n = await setUpQuestion(currentQuestionIndex)
 
@@ -622,11 +603,11 @@ export default function AssignmentPage() {
     try {
       const { data: { session } } = await supabase.auth.getSession()
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/add_message`, {
-        method: 'POST',
+  
+      const data = await fetchWithAuth("/functions/v1/add_message", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token}`
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({
           problem_id: problem.id,
@@ -636,12 +617,7 @@ export default function AssignmentPage() {
           time: msg.time
         })
       });
-  
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-  
-      const data = await response.json();
+      
       return data;
     } catch (error) {
       console.error('Error saving message:', error);
@@ -763,10 +739,10 @@ export default function AssignmentPage() {
         .from('problems_messages')
         .select('message_id')
         .eq('problem_id', problemId);
-
       if (err0) throw err0;
+
       
-      const { data, error } = await supabase
+      const { data: prevMsgs, error } = await supabase
         .from('messages')
         .select('*')
         .in('id', problemMessages.map(msg => msg.message_id))
@@ -775,7 +751,21 @@ export default function AssignmentPage() {
       if (error) {
         throw error;
       }
+      let data = prevMsgs;
 
+      if (data.length == 0) {
+        const response = await fetchWithAuth(`/functions/v1/begin_chat`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            problem_id: problemId
+          })
+        })
+        data = (await response.json()).messages
+      }
+      
       return data.map((entry) => ({
         id: entry.id,
         role: entry.role as MessageRole,
