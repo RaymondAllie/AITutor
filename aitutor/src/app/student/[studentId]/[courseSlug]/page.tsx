@@ -10,6 +10,8 @@ import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
+import { useAuth } from "@/contexts/auth-context"
+import { callEdgeFunction } from "@/lib/edge-functions"
 
 // Define interfaces to match your database schema
 interface Material {
@@ -52,6 +54,7 @@ interface Course {
 export default function StudentCoursePage() {
   const params = useParams()
   const { studentId, courseSlug } = params
+  const { fetchWithAuth } = useAuth()
   
   // State for the course data
   const [course, setCourse] = useState<Course | null>(null)
@@ -171,27 +174,40 @@ export default function StudentCoursePage() {
               }
             }
             
-            // Get student's progress for this assignment's problems
-            const { data: progressData, error: progressError } = await supabase
-              .from('student_progress')
-              .select('*')
-              .eq('assignment_id', assignment.id)
-              .eq('student_id', studentId)
-              
+            // Get student's progress for this assignment's problems using the edge function
+            const progressResponse = await callEdgeFunction(
+              fetchWithAuth,
+              "get_progress",
+              { assignment_id: assignment.id }
+            );
+            
+            // Check if the edge function call was successful
+            if (!progressResponse.success) {
+              console.error("Error fetching student progress:", progressResponse.error);
+              return { 
+                ...assignment, 
+                total_problems: problemsData.length,
+                completed_problems: 0,
+                problems: problemsData.map(p => ({ ...p, completed: false })),
+                status: "upcoming"
+              };
+            }
+            
+            // Extract completed problem IDs from the response
+            const completedProblemIds = progressResponse.completed || [];
+            
             // Map completed status to problems
             const problemsWithStatus = problemsData.map(problem => {
-              const isCompleted = progressData?.some(
-                progress => progress.problem_id === problem.id && progress.completed
-              ) || false
+              const isCompleted = completedProblemIds.includes(problem.id);
               
               return {
                 ...problem,
                 completed: isCompleted
               }
-            })
+            });
             
             // Count completed problems
-            const completedCount = problemsWithStatus.filter(p => p.completed).length
+            const completedCount = problemsWithStatus.filter(p => p.completed).length;
             
             // Determine assignment status
             let status: "completed" | "pending" | "upcoming" = "upcoming"
@@ -254,7 +270,7 @@ export default function StudentCoursePage() {
     if (courseSlug && studentId) {
       fetchCourseData()
     }
-  }, [studentId, courseSlug])
+  }, [studentId, courseSlug, fetchWithAuth])
   
   if (loading) {
     return (

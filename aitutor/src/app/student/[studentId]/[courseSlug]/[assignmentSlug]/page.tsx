@@ -58,6 +58,7 @@ import 'react-image-crop/dist/ReactCrop.css'
 import { toast } from "sonner"
 import { useAuth } from "@/contexts/auth-context"
 
+
 // Configure PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js'
 
@@ -460,6 +461,7 @@ export default function AssignmentPage() {
   
   const setUpQuestion = async (index: number) => {
     if (!currentQuestion) throw new Error("can't load question")
+    console.log("user", user)
     const rag = await pullContext(assignment.questions[currentQuestionIndex].question, 3)
 
     const context = rag.data
@@ -489,7 +491,7 @@ export default function AssignmentPage() {
 
     }
     const previous = await getMessages(currentQuestion.id)
-
+    console.log("previous", previous)
     setMessages((prev) => [
       ...previous,
       createMessage("system", `Here is some context to the question you are trying to help the student through, use if applicable:\n\n${context.join("\n\n")}`),
@@ -497,8 +499,25 @@ export default function AssignmentPage() {
   }
 
   const pullContext = async (text: string, max_matches: number) => {
+    if (!assignment || !assignment.courseName) {
+      console.error("Cannot pull context: assignment or course data is missing");
+      return null;
+    }
+    
     console.log("sending request on text")
     console.log(text)
+    
+    // Get the course ID from the assignment data
+    const { data: courseData, error: courseError } = await supabase
+      .from('courses')
+      .select('id')
+      .eq('course_code', courseSlug ? (courseSlug as string).replace(/-/g, ' ') : '')
+      .single();
+      
+    if (courseError) {
+      console.error("Error fetching course ID:", courseError);
+      return null;
+    }
     
     const body = await fetchWithAuth(`/functions/v1/pull_context`, {
       method: 'POST',
@@ -506,7 +525,7 @@ export default function AssignmentPage() {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        course_id: "REPLACE WITH COURSE ID",//   *********** needs to be edited ************
+        course_id: courseData.id,
         text: text,
         max_matches: max_matches
       })
@@ -667,7 +686,7 @@ export default function AssignmentPage() {
             try {
               const parsed = JSON.parse(data);
               const content = parsed.choices[0]?.delta?.content;
-              //console.log(content);
+              console.log("content", content);
               text += content;
               setMessages(prev => [...prev.slice(0, -1), createMessage('assistant', text)]);
             } catch (e) {
@@ -692,38 +711,30 @@ export default function AssignmentPage() {
     
     try {
       // Prepare the context and messages
-      const context = await pullContext(messages[messages.length - 1].content, 3);
+      // const context = await pullContext(messages[messages.length - 1].content, 3);
       
       const payload = {
         messages: messages,
-        context: context || [],
-        settings: {
-          temperature: 0.3,
-          model: "gpt-3.5-turbo" // Example model
-        },
-        assignment_id: assignment?.id,
-        question_id: currentQuestion.id,
-        student_id: params.studentId
+        problem_id: currentQuestion.id,
+        threshold: 7
       };
-      
+      const { data: { session } } = await supabase.auth.getSession()
       // Use fetchWithAuth to call the chat edge function
-      const response = await fetchWithAuth("/functions/v1/chat", {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/chat`, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session?.access_token}`,
+
         },
         body: JSON.stringify(payload)
       });
-      
-      // Check for streaming vs non-streaming response
-      if (response.stream) {
-        await handleStream(response.stream);
-      } else if (response.success && response.answer) {
-        const assistantMessage = createMessage("assistant", response.answer);
-        setMessages(prev => [...prev, assistantMessage]);
-        saveMessage(assistantMessage, currentQuestion);
-      } else {
-        throw new Error(response.error || "Failed to get response");
+      const response = res.body
+      const text = await handleStream(response)
+      const message = createMessage('assistant', text)
+      if (currentQuestion) {
+        const success = await saveMessage(message, currentQuestion)
+        console.log(success)
       }
     } catch (error) {
       console.error("Error getting response:", error);
@@ -731,6 +742,7 @@ export default function AssignmentPage() {
     } finally {
       setResponseInProgress(false);
     }
+
   };
 
   const getMessages = async (problemId: string) => {
@@ -763,7 +775,7 @@ export default function AssignmentPage() {
             problem_id: problemId
           })
         })
-        data = (await response.json()).messages
+        data = response.messages
       }
       
       return data.map((entry) => ({
@@ -1078,7 +1090,7 @@ export default function AssignmentPage() {
                             <div className={`flex max-w-[80%] ${message.role !== 'user' ? 'items-start' : 'items-end'}`}>
                               {message.role !== 'user' && (
                                 <Avatar className="h-8 w-8 mr-2">
-                                  <AvatarImage src="/avatars/ai-tutor.png" alt="AI" />
+                                  <AvatarImage src="https://i.ibb.co/0r00000/ai-tutor.png" alt="AI" />
                                   <AvatarFallback>AI</AvatarFallback>
                                 </Avatar>
                               )}

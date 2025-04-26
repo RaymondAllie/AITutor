@@ -16,6 +16,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Babel Education",
   description: "Educational platform for students and educators",
+  icons: {
+    icon: "/icon.png",
+  },
 };
 
 export default function RootLayout({

@@ -10,7 +10,7 @@ interface AuthContextType {
   isLoading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
-  signInWithGoogle: () => Promise<void>;
+  signInWithGoogle: (specificUserType?: 'educator' | 'student') => Promise<void>;
   // Add the new fetchWithAuth function
   fetchWithAuth: (endpoint: string, options?: RequestInit) => Promise<any>;
 }
@@ -168,10 +168,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (error) throw error;
   };
 
-  const signInWithGoogle = async () => {
+  const signInWithGoogle = async (specificUserType?: 'educator' | 'student') => {
     // Get the current URL pathname to determine if this is an educator or student login
     const pathName = typeof window !== 'undefined' ? window.location.pathname : '';
-    const userType = pathName.includes('/educator') ? 'educator' : 'student';
+    // Use the provided specificUserType if available, otherwise determine from path
+    const userType = specificUserType || (pathName.includes('/educator') ? 'educator' : 'student');
     
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',

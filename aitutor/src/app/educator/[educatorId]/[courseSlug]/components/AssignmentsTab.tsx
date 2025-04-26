@@ -14,6 +14,7 @@ import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
 import { Course, Assignment, Material } from "@/app/educator/[educatorId]/[courseSlug]/types"
 import { generateQuestionsFromPdf, createAssignmentWithQuestions } from "../utils/questionGenerationHelpers"
+import { useAuth } from "@/contexts/auth-context"
 
 interface AssignmentsTabProps {
   course: Course
@@ -31,6 +32,7 @@ export function AssignmentsTab({ course, setCourse, openProblemsDialog, openInsi
   const router = useRouter()
   const params = useParams()
   const { educatorId } = params
+  const { fetchWithAuth } = useAuth()
 
   // State for materials dialog
   const [materialsDialogOpen, setMaterialsDialogOpen] = useState(false)
@@ -142,7 +144,7 @@ export function AssignmentsTab({ course, setCourse, openProblemsDialog, openInsi
     
     try {
       // Use the utility function to generate questions
-      const problems = await generateQuestionsFromPdf(uploadedProblemSet, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '')
+      const problems = await generateQuestionsFromPdf(uploadedProblemSet, fetchWithAuth)
       
       // Store the generated questions
       setGeneratedQuestions(problems)
@@ -176,7 +178,7 @@ export function AssignmentsTab({ course, setCourse, openProblemsDialog, openInsi
         generatedQuestions.map(q => q.question),
         generatedQuestions.map(q => q.answer || ""),
         [],
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+        fetchWithAuth
       )
       
       toast.success("Assignment created with generated questions")

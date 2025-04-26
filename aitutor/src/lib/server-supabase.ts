@@ -12,10 +12,11 @@ export function createClient(cookieStore: ReturnType<typeof cookies>, response?:
     supabaseAnonKey,
     {
       cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
+        async get(name: string) {
+          const cookie = await cookieStore.get(name);
+          return cookie?.value;
         },
-        set(name: string, value: string, options: any) {
+        async set(name: string, value: string, options: any) {
           if (response) {
             response.cookies.set({
               name,
@@ -24,14 +25,14 @@ export function createClient(cookieStore: ReturnType<typeof cookies>, response?:
             });
           } else {
             // In a route handler or middleware, we need to set the cookie explicitly
-            cookieStore.set({
+            await cookieStore.set({
               name,
               value,
               ...options,
             });
           }
         },
-        remove(name: string, options: any) {
+        async remove(name: string, options: any) {
           if (response) {
             response.cookies.set({
               name,
@@ -40,7 +41,7 @@ export function createClient(cookieStore: ReturnType<typeof cookies>, response?:
               maxAge: 0,
             });
           } else {
-            cookieStore.set({
+            await cookieStore.set({
               name,
               value: '',
               ...options,

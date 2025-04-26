@@ -62,11 +62,33 @@ export const EdgeFunctions = {
   /**
    * Upload a file with authentication
    */
-  uploadFile: async (fetchWithAuth: any, fileData: FormData) => {
-    return fetchWithAuth('/functions/v1/upload', {
+  uploadFile: async (fetchWithAuth: any, formData: FormData) => {
+    return fetchWithAuth('/functions/v1/generate_questions', {
       method: 'POST',
-      body: fileData,
-      // Don't set Content-Type header - it will be set automatically with form boundary
+      body: formData,
     });
+  },
+  
+  /**
+   * Generate questions from a PDF file
+   */
+  generateQuestions: async (fetchWithAuth: any, pdfFile: File) => {
+    const formData = new FormData();
+    formData.append('pdf', pdfFile);
+    
+    const response = await fetchWithAuth('/functions/v1/generate_questions', {
+      method: 'POST',
+      body: formData,
+    });
+    
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to generate questions');
+    }
+    
+    return {
+      success: true,
+      problems: response.problems || [],
+      message: response.message || 'PDF processed successfully'
+    };
   }
 }; 

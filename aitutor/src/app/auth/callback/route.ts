@@ -8,24 +8,34 @@ export async function GET(request: NextRequest) {
   const userType = requestUrl.searchParams.get('userType') || 'student'; // Default to student if not specified
   
   if (code) {
-    // Create an initial response object for redirecting
-    const response = NextResponse.redirect(
-      userType === 'educator'
-        ? new URL(`/educator/dashboard`, requestUrl.origin)
-        : new URL(`/student/dashboard`, requestUrl.origin)
-    );
-    
-    // Create a Supabase client for server-side operations using our new utility
-    const cookieStore = cookies();
-    const supabase = createClient(cookieStore, response);
-    
-    // Exchange the code for a session
-    await supabase.auth.exchangeCodeForSession(code);
-    
-    // Get the user information
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    if (user) {
+    try {
+      // Create an initial response object for redirecting
+      const response = NextResponse.redirect(
+        userType === 'educator'
+          ? new URL(`/educator/dashboard`, requestUrl.origin)
+          : new URL(`/student/dashboard`, requestUrl.origin)
+      );
+      
+      // Create a Supabase client for server-side operations using our new utility
+      const cookieStore = cookies();
+      const supabase = createClient(cookieStore, response);
+      
+      // Exchange the code for a session
+      const { error: sessionError } = await supabase.auth.exchangeCodeForSession(code);
+      
+      if (sessionError) {
+        console.error('Error exchanging code for session:', sessionError);
+        return NextResponse.redirect(new URL('/', requestUrl.origin));
+      }
+      
+      // Get the user information
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError || !user) {
+        console.error('Error getting user:', userError);
+        return NextResponse.redirect(new URL('/', requestUrl.origin));
+      }
+      
       try {
         // Check if the user already exists in the database
         const { data: existingUser, error: queryError } = await supabase
@@ -85,12 +95,12 @@ export async function GET(request: NextRequest) {
         ),
         { headers: response.headers } // Preserve the Set-Cookie headers
       );
+    } catch (error) {
+      console.error('Error in auth callback:', error);
+      return NextResponse.redirect(new URL('/', requestUrl.origin));
     }
-    
-    // Return the original redirect if we couldn't get the user ID
-    return response;
   }
   
-  // If there's an error, redirect back to the login page
+  // If there's no code or an error occurred, redirect back to the login page
   return NextResponse.redirect(new URL('/', requestUrl.origin));
 } 
