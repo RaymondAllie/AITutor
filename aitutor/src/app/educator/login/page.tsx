@@ -161,7 +161,7 @@ export default function EducatorLogin() {
                 {loading ? (
                   <span className="animate-spin mr-2">⚪</span>
                 ) : (
-                  <Image src="/Google__G__logo.svg" alt="Google" width={20} height={20} />
+                <Image src="/Google__G__logo.svg" alt="Google" width={20} height={20} />
                 )}
                 <span>Sign in with Google</span>
               </Button>

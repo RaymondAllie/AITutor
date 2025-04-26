@@ -66,8 +66,8 @@ export function CourseList({ person_id, role }: CourseListProps) {
             <Card className="h-full overflow-hidden border border-gray-200 shadow-sm hover:shadow">
               <CardHeader className="">
                 <CardTitle className={`text-xl font-bold ${course.color}`}>{course.name}</CardTitle>
-                <CardDescription>{course.code}</CardDescription>
-              </CardHeader>
+            <CardDescription>{course.code}</CardDescription>
+          </CardHeader>
               
               <CardContent className="pt-0">                
                 <div className="grid grid-cols-12 gap-2 text-sm">
@@ -87,7 +87,7 @@ export function CourseList({ person_id, role }: CourseListProps) {
                 </div>
                 
               </CardContent>
-                          </Card>
+        </Card>
           </Link>
         )
       })}

@@ -156,15 +156,15 @@ export default function Educator() {
               ))}
             </div>
           ) : (
-            <div className="rounded-md border border-dashed p-12 text-center">
+          <div className="rounded-md border border-dashed p-12 text-center">
               <h3 className="text-lg font-medium">No courses found</h3>
-              <p className="text-sm text-muted-foreground mt-2">
+            <p className="text-sm text-muted-foreground mt-2">
                 Create your first course to get started.
-              </p>
+            </p>
               <Button onClick={() => setIsAddCourseModalOpen(true)} className="mt-4">
                 <PlusCircle className="mr-2 h-4 w-4" /> Create Course
               </Button>
-            </div>
+          </div>
           )}
         </TabsContent>
         
