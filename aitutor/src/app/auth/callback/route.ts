@@ -26,6 +26,55 @@ export async function GET(request: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser();
     
     if (user) {
+      try {
+        // Check if the user already exists in the database
+        const { data: existingUser, error: queryError } = await supabase
+          .from('users')
+          .select('role')
+          .eq('id', user.id)
+          .single();
+          
+        if (queryError && queryError.code !== 'PGRST116') { // PGRST116 is "not found" error
+          console.error('Error checking user role:', queryError);
+        }
+        
+        // If the user doesn't exist or has a different role, update their record
+        const role = userType === 'educator' ? 'educator' : 'student';
+        
+        if (!existingUser) {
+          // User doesn't exist, create them
+          const { error: insertError } = await supabase
+            .from('users')
+            .insert({
+              id: user.id,
+              role: role,
+              email: user.email,
+              name: user.user_metadata?.full_name || user.email?.split('@')[0],
+            });
+            
+          if (insertError) {
+            console.error('Error creating user record:', insertError);
+          }
+          
+          // If it's a student, also create a student profile
+          if (role === 'student') {
+            await supabase
+              .from('student_profiles')
+              .insert({
+                user_id: user.id,
+                name: user.user_metadata?.full_name || user.email?.split('@')[0],
+                email: user.email
+              });
+          }
+        } else if (existingUser.role !== role) {
+          // User exists but with different role - may not want to override
+          // Just note it rather than change it automatically
+          console.log(`Note: User ${user.id} has role ${existingUser.role} but is logging in via ${role} login`);
+        }
+      } catch (err) {
+        console.error('Error processing user in callback:', err);
+      }
+
       // Update the redirect URL with the user ID
       return NextResponse.redirect(
         new URL(

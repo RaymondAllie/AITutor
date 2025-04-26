@@ -10,6 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { ArrowLeft } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/contexts/auth-context";
 
 export default function EducatorLogin() {
   const [email, setEmail] = useState("");
@@ -19,6 +20,7 @@ export default function EducatorLogin() {
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { signInWithGoogle } = useAuth();
 
   // Check for error parameters in the URL
   useEffect(() => {
@@ -77,19 +79,9 @@ export default function EducatorLogin() {
     setError(null);
     
     try {
-      // Sign in with Google OAuth
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback?userType=educator`,
-        }
-      });
-
-      if (error) {
-        throw error;
-      }
-      
-      // The redirect happens automatically, no need to handle navigation here
+      // Use the auth context's signInWithGoogle function
+      await signInWithGoogle();
+      // The redirect happens automatically
     } catch (err: any) {
       console.error("Google login error:", err);
       setError(err.message || "Failed to sign in with Google. Please try again.");

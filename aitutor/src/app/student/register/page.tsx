@@ -10,6 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { ArrowLeft } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/contexts/auth-context";
 
 export default function StudentRegister() {
   const [email, setEmail] = useState("");
@@ -19,6 +20,7 @@ export default function StudentRegister() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+  const { signInWithGoogle } = useAuth();
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -104,23 +106,9 @@ export default function StudentRegister() {
     setError(null);
     
     try {
-      // Sign up with Google OAuth
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback?userType=student`,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          }
-        }
-      });
-
-      if (error) {
-        throw error;
-      }
-      
-      // The redirect happens automatically, no need to handle navigation here
+      // Use the auth context's signInWithGoogle function
+      await signInWithGoogle();
+      // The redirect happens automatically
     } catch (err: any) {
       console.error("Google sign up error:", err);
       setError(err.message || "Failed to sign up with Google. Please try again.");

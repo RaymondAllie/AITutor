@@ -169,10 +169,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signInWithGoogle = async () => {
+    // Get the current URL pathname to determine if this is an educator or student login
+    const pathName = typeof window !== 'undefined' ? window.location.pathname : '';
+    const userType = pathName.includes('/educator') ? 'educator' : 'student';
+    
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: `${window.location.origin}/auth/callback?userType=${userType}`,
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent',
+        }
       },
     });
     
