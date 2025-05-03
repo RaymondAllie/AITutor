@@ -127,6 +127,7 @@ export const useAssignmentData = (
       if (problemsError) throw problemsError;
       
       setProblems(problemsData || []);
+      console.log("problemsData", problemsData);
     } catch (err: any) {
       console.error("Error loading problems:", err);
       toast.error("Failed to load problems");

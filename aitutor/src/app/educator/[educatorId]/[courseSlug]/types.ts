@@ -15,6 +15,7 @@ export interface Problem {
     pageNumber: number
     crop: Crop
     imageData?: string
+    image_url?: string
   }
 }
 

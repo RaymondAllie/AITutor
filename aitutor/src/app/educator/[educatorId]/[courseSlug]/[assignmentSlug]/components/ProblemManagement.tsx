@@ -234,12 +234,12 @@ const ProblemManagement: React.FC<ProblemManagementProps> = ({
                     </>
                   )}
                   
-                  {problem.diagram && problem.diagram.imageData && (
+                  {problem.image_url && (
                     <div className="mt-4">
                       <div className="font-medium mb-2">Diagram:</div>
                       <div className="border p-2 rounded bg-gray-50">
                         <img 
-                          src={problem.diagram.imageData} 
+                          src={problem.image_url} 
                           alt="Problem diagram"
                           className="max-w-full h-auto rounded"
                         />

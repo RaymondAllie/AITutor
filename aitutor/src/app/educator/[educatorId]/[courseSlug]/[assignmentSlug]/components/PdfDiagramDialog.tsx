@@ -5,6 +5,8 @@ import { Scissors, Save, Image } from "lucide-react";
 import { Document, Page } from 'react-pdf';
 import { usePdfDiagram } from "../hooks/usePdfDiagram";
 import { Problem } from "../../types"; // Adjust import path as needed
+import { useAuth } from '@/contexts/auth-context';
+import { toast } from 'sonner';
 
 interface PdfDiagramDialogProps {
   open: boolean;
@@ -13,6 +15,20 @@ interface PdfDiagramDialogProps {
   problems: Problem[];
   setProblems: React.Dispatch<React.SetStateAction<Problem[]>>;
   pdfUrl: string;
+}
+
+function dataURLtoBlob(dataurl: string) {
+  const arr = dataurl.split(',');
+  const mimeMatch = arr[0].match(/:(.*?);/);
+  if (!mimeMatch) throw new Error('Invalid data URL');
+  const mime = mimeMatch[1];
+  const bstr = atob(arr[1]);
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+  while (n--) {
+    u8arr[n] = bstr.charCodeAt(n);
+  }
+  return new Blob([u8arr], { type: mime });
 }
 
 const PdfDiagramDialog: React.FC<PdfDiagramDialogProps> = ({
@@ -37,9 +53,40 @@ const PdfDiagramDialog: React.FC<PdfDiagramDialogProps> = ({
     handleMouseMove,
     handleMouseUp,
     handleCropImage,
-    handleSaveDiagram,
-    setScale,
   } = usePdfDiagram();
+  const { fetchWithAuth } = useAuth();
+
+  const handleSaveDiagram = async (problemId: string, problems: Problem[], setProblems: React.Dispatch<React.SetStateAction<Problem[]>>) => {
+    if (!croppedImage) return false;
+    try {
+      const blob = dataURLtoBlob(croppedImage);
+      const formData = new FormData();
+      formData.append('image', blob, `${problemId}.png`);
+      formData.append('data', JSON.stringify({ id: problemId }));
+      const response = await fetchWithAuth('/functions/v1/attach_images', {
+        method: 'POST',
+        body: formData,
+      });
+      if (!response.success) throw new Error(response.error || 'Failed to attach image');
+      setProblems(prev => prev.map(p => {
+        if (p.id === problemId && p.diagram) {
+          return {
+            ...p,
+            diagram: {
+              ...p.diagram,
+              image_url: response.image_url
+            }
+          };
+        }
+        return p;
+      }));
+      toast.success('Diagram image attached successfully');
+      return true;
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to attach diagram image');
+      return false;
+    }
+  };
 
   const handleSave = async () => {
     if (!currentProblemId) return;
@@ -79,24 +126,6 @@ const PdfDiagramDialog: React.FC<PdfDiagramDialogProps> = ({
                 disabled={currentPage >= numPages}
               >
                 Next
-              </Button>
-            </div>
-            
-            <div className="flex items-center gap-2">
-              <Button 
-                variant="outline" 
-                onClick={() => setScale(scale - 0.1)}
-                disabled={scale <= 0.5}
-              >
-                Zoom Out
-              </Button>
-              <span>{Math.round(scale * 100)}%</span>
-              <Button 
-                variant="outline" 
-                onClick={() => setScale(scale + 0.1)}
-                disabled={scale >= 2.0}
-              >
-                Zoom In
               </Button>
             </div>
           </div>
@@ -162,7 +191,10 @@ const PdfDiagramDialog: React.FC<PdfDiagramDialogProps> = ({
               <div className="flex flex-col gap-2 mt-auto">
                 <Button
                   variant="secondary"
-                  onClick={handleCropImage}
+                  onClick={() => {
+                    console.log("Cropping image selection");
+                    handleCropImage();
+                  }}
                   disabled={!selection}
                   className="w-full"
                 >
@@ -171,7 +203,10 @@ const PdfDiagramDialog: React.FC<PdfDiagramDialogProps> = ({
                 </Button>
                 
                 <Button
-                  onClick={handleSave}
+                  onClick={() => {
+                    console.log("Saving diagram for problem ID:", currentProblemId);
+                    handleSave();
+                  }}
                   disabled={!croppedImage || isSavingDiagram}
                   className="w-full"
                 >

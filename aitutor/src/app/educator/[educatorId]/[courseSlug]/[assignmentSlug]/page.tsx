@@ -17,7 +17,7 @@ import AssignmentHeader from "./components/AssignmentHeader"
 
 // Hooks and utils
 import { useAssignmentData } from "./hooks/useAssignmentData"
-import { formatDate, getMaterialIcon } from "./utils/helpers.tsx"
+import { formatDate, getMaterialIcon } from "./utils/helpers"
 
 export default function AssignmentPage() {
   const params = useParams()
@@ -96,6 +96,9 @@ export default function AssignmentPage() {
       }
     }
   }, [assignment])
+
+  // Debug: print out problems
+  console.log('problems', problems);
 
   if (loading) {
     return <div className="flex justify-center items-center h-96">
