@@ -159,6 +159,8 @@ export default function AssignmentPage() {
   
   const { fetchWithAuth, user } = useAuth();
   
+  const [showNextQuestionDialog, setShowNextQuestionDialog] = useState(false);
+  
   const createMessage = (role: MessageRole, content: string): Message => {
     return {
       id: uuidv4(),
@@ -429,7 +431,12 @@ export default function AssignmentPage() {
         assignment_id: assignment!.id
       })
     })
-
+    console.log(res.completed)
+    console.log(currentQuestion?.id)
+    if (res.completed.includes(currentQuestion?.id)) {
+      console.log("THIS IS CORRECT")
+      setShowNextQuestionDialog(true)
+    }
     setCompletedQuestions((_prev) => res.completed)
     return true
     }
@@ -548,13 +555,6 @@ export default function AssignmentPage() {
   const goToPreviousQuestion = () => {
     if (currentQuestionIndex > 0 && assignment) {
       setCurrentQuestionIndex(currentQuestionIndex - 1);
-      
-      // Add system message for the new question
-      const newMessage = createMessage(
-        'system',
-        `Let's go back to question ${currentQuestionIndex}: "${assignment.questions[currentQuestionIndex - 1].question}"`
-      );
-      setMessages([...messages, newMessage]);
     }
   };
   
@@ -562,7 +562,6 @@ export default function AssignmentPage() {
   const goToNextQuestion = () => {
     if (assignment && currentQuestionIndex < assignment.questions.length - 1) {
       setCurrentQuestionIndex(currentQuestionIndex + 1);
-      setUpQuestion(currentQuestionIndex);
     }
   };
   
@@ -572,8 +571,6 @@ export default function AssignmentPage() {
     if (!assignment || !currentQuestion || completedQuestions.includes(currentQuestion.id)) return;
     
     // Temporarily keeping this local without saving to database
-
-
     const _add = await fetchWithAuth(`/functions/v1/add_progress`, {
       method: 'POST',
       headers: {
@@ -584,25 +581,9 @@ export default function AssignmentPage() {
         problem_id: currentQuestion.id
       })
     })
-    
-    
-    // Just update local state for now
+  
     setCompletedQuestions(prev => [...prev, currentQuestion.id]);
-    
-    
-    // If there are more questions, move to the next one
-    if (currentQuestionIndex < assignment.questions.length - 1) {
-      setCurrentQuestionIndex(currentQuestionIndex + 1);
-    } else {
-      // Check if all questions are now completed
-      const allCompleted = assignment.questions.every(q => 
-        completedQuestions.includes(q.id) || q.id === currentQuestion.id
-      );
-      
-      if (allCompleted) {
-        setShowCompletionDialog(true);
-      }
-    }
+    setShowNextQuestionDialog(true);
   };
 
   const clearMessages = async () => {
@@ -729,6 +710,7 @@ export default function AssignmentPage() {
         problem_id: currentQuestion.id,
         threshold: 7
       };
+      
       const { data: { session } } = await supabase.auth.getSession()
       // Use fetchWithAuth to call the chat edge function
       const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/chat`, {
@@ -747,6 +729,8 @@ export default function AssignmentPage() {
         const success = await saveMessage(message, currentQuestion)
         console.log(success)
       }
+      console.log(messages)
+      loadProgress()
     } catch (error) {
       console.error("Error getting response:", error);
       toast.error("Failed to generate a response");
@@ -1348,6 +1332,34 @@ export default function AssignmentPage() {
                 {assignment?.nextAssignment ? 'Go to Next Assignment' : 'Return to Course'}
               </Button>
             </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog for moving to next question after marking as complete */}
+      <Dialog open={showNextQuestionDialog} onOpenChange={setShowNextQuestionDialog}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Question Completed!</DialogTitle>
+            <DialogDescription>
+              You have completed this question. Would you like to move on to the next question?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowNextQuestionDialog(false)}>
+              Stay Here
+            </Button>
+            <Button
+              onClick={() => {
+                setShowNextQuestionDialog(false);
+                if (assignment && currentQuestionIndex < assignment.questions.length - 1) {
+                  setCurrentQuestionIndex(currentQuestionIndex + 1);
+                }
+              }}
+              disabled={assignment ? currentQuestionIndex >= assignment.questions.length - 1 : true}
+            >
+              Next Question
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
