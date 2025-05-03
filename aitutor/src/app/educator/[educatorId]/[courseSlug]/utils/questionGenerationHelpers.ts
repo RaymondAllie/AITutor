@@ -39,6 +39,7 @@ export async function generateQuestionsFromPdf(file: File, fetchWithAuth: any) {
  * @param materialIds Array of material IDs to attach
  * @param problems Array of problem questions
  * @param answers Array of answers corresponding to the problems (each answer will be transformed to a list)
+ * @param pdfFile Optional PDF file of the problem set to upload
  * @param imageUrls Optional array of image URLs for each problem
  * @param fetchWithAuth The authenticated fetch function from useAuth
  * @returns The created assignment data
@@ -51,6 +52,7 @@ export async function createAssignmentWithQuestions(
   materialIds: string[],
   problems: string[],
   answers: string[],
+  pdfFile?: File,
   imageUrls: string[] = [],
   fetchWithAuth: any
 ) {
@@ -59,6 +61,14 @@ export async function createAssignmentWithQuestions(
   
   // Create a FormData object for multipart/form-data
   const formData = new FormData();
+  
+  // Add the PDF file if provided
+  if (pdfFile) {
+    formData.append('pdf', pdfFile);
+    console.log("PDF file added to form data");
+  } else {
+    console.log("No PDF file provided");
+  }
   
   // Add all the data as a JSON string in the 'data' field
   const jsonData = {
@@ -85,4 +95,4 @@ export async function createAssignmentWithQuestions(
   }
   
   return data;
-} 
+}

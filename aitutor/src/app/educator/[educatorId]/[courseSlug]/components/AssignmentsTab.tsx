@@ -169,7 +169,7 @@ export function AssignmentsTab({ course, setCourse, openProblemsDialog, openInsi
     try {
       // Use the utility function to create the assignment
       // Note: The utility function will transform each answer into a list internally
-      await createAssignmentWithQuestions(
+      const data = await createAssignmentWithQuestions(
         course.id,
         newAssignment.name,
         newAssignment.dueDate,
@@ -177,6 +177,7 @@ export function AssignmentsTab({ course, setCourse, openProblemsDialog, openInsi
         newAssignment.attachedMaterials,
         generatedQuestions.map(q => q.question),
         generatedQuestions.map(q => q.answer || ""),
+        uploadedProblemSet || undefined,
         [],
         fetchWithAuth
       )
@@ -195,8 +196,21 @@ export function AssignmentsTab({ course, setCourse, openProblemsDialog, openInsi
         attachedMaterials: []
       })
       
-      // Refresh the assignments list (you might need to add a refreshCourse function)
-      // refreshCourse()
+      // Add the returned PDF url to the new assignment in local state
+      if (data && data.url) {
+        if (course) {
+          setCourse({
+            ...course,
+            assignments: [
+              ...course.assignments,
+              {
+                ...data.assignment,
+                pdf_url: data.url
+              }
+            ]
+          });
+        }
+      }
     } catch (err: any) {
       console.error("Error creating assignment:", err)
       toast.error(err.message || "Failed to create assignment with generated questions")

@@ -7,6 +7,7 @@ import { toast } from "sonner"
 import { ArrowLeft } from "lucide-react"
 import 'react-pdf/dist/esm/Page/TextLayer.css'
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css'
+import { supabase } from '@/lib/supabase'
 
 // Internal components
 import PdfDiagramDialog from "./components/PdfDiagramDialog"
@@ -49,7 +50,7 @@ export default function AssignmentPage() {
   // PDF and diagram selection state
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false)
   const [currentProblemId, setCurrentProblemId] = useState<string | null>(null)
-  const [pdfUrl, setPdfUrl] = useState<string>("https://yhqxnhbpxjslmiwtfkez.supabase.co/storage/v1/object/public/psetfiles//hw1a.pdf")
+  const [pdfUrl, setPdfUrl] = useState<string>("")
   
   // Update selected materials whenever assignment changes
   useEffect(() => {
@@ -81,6 +82,20 @@ export default function AssignmentPage() {
     setCurrentProblemId(problemId)
     setPdfDialogOpen(true)
   }
+
+  useEffect(() => {
+    if (assignment) {
+      if (assignment.pdf_url) {
+        setPdfUrl(assignment.pdf_url)
+      } else {
+        // Try to fetch from psetfiles bucket
+        const { data } = supabase.storage.from('psetfiles').getPublicUrl(assignment.id)
+        if (data && data.publicUrl) {
+          setPdfUrl(data.publicUrl)
+        }
+      }
+    }
+  }, [assignment])
 
   if (loading) {
     return <div className="flex justify-center items-center h-96">

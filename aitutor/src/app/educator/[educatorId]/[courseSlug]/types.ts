@@ -24,7 +24,8 @@ export interface Assignment {
   due_date: string
   description: string
   material_ids: string[]
-  problem_count?: number 
+  problem_count?: number
+  pdf_url?: string
 }
 
 export interface Course {
