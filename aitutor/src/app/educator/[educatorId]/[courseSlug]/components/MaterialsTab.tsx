@@ -73,7 +73,11 @@ export function MaterialsTab({ course, setCourse, supabaseAnonKey }: MaterialsTa
       formData.append('data', materialData)
       
       // Use EdgeFunctions.uploadFile helper
-      const response = await EdgeFunctions.uploadFile(fetchWithAuth, formData)
+      const response = await EdgeFunctions.materialUpload(fetchWithAuth, file, {
+        name: newMaterial.name,
+        type: newMaterial.type,
+        course_id: course.id
+      })
       
       if (!response.success) {
         throw new Error(response.error || 'Failed to upload material')

@@ -362,47 +362,8 @@ export default function StudentCoursePage() {
         </p>
       </div>
       
-      {/* Course Materials Section */}
-      <div>
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold">Course Materials</h2>
-        </div>
-        
-        {course.materials.length === 0 ? (
-          <div className="text-center py-12 border rounded-lg bg-gray-50">
-            <FileText className="h-12 w-12 mx-auto text-gray-400 mb-3" />
-            <h3 className="text-lg font-medium text-gray-700">No Materials Available</h3>
-            <p className="text-gray-500 max-w-md mx-auto mt-2">
-              The instructor hasn't added any course materials yet.
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {course.materials.map((material) => (
-              <Card key={material.id} className="overflow-hidden hover:shadow-md transition-shadow bg-gray-100">
-                <div className="flex px-4 py-3 items-center">
-                  <div className="mr-3 rounded-lg">
-                    {getMaterialIcon(material.type || 'other')}
-                  </div>
-                  <div>
-                    <h3 className="font-semibold">{material.name}</h3>
-                    <p className="text-xs text-gray-500 capitalize">{material.type || 'Resource'}</p>
-                  </div>
-                  <Button size="icon" variant="ghost" className="ml-auto">
-                    <Info className="h-4 w-4" />
-                  </Button>
-                </div>
-              </Card>
-            ))}
-          </div>
-        )}
-      </div>
-      
       {/* Assignments Section */}
       <div>
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold">Assignments</h2>
-        </div>
         
         {course.assignments.length === 0 ? (
           <div className="text-center py-12 border rounded-lg bg-gray-50">
@@ -601,46 +562,6 @@ export default function StudentCoursePage() {
             </TabsContent>
           </Tabs>
         )}
-      </div>
-      
-      {/* AI Tutor Section - commented out for now */}
-      <div>
-        {/* <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold">Babel</h2>
-        </div>
-        
-        <Card className="border-2 border-blue-200 shadow-sm">
-          <CardHeader>
-            <CardTitle>Need help with your coursework?</CardTitle>
-            <CardDescription>
-              Babel can help you understand concepts, work through problems, and prepare for exams.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button onClick={() => setShowChatHelp(!showChatHelp)} className="w-full bg-blue-600 hover:bg-blue-700">
-              <MessageSquare className="mr-2 h-4 w-4" />
-              Start a Tutoring Session
-            </Button>
-            
-            {showChatHelp && (
-              <div className="mt-4 border rounded-lg p-4">
-                <h3 className="font-medium mb-2">Ask Babel a question</h3>
-                <form onSubmit={handleChatSubmit} className="space-y-4">
-                  <textarea
-                    className="w-full p-2 border rounded-md"
-                    rows={3}
-                    placeholder="e.g., Can you explain how linked lists work?"
-                    value={chatMessage}
-                    onChange={(e) => setChatMessage(e.target.value)}
-                  ></textarea>
-                  <Button type="submit" disabled={!chatMessage.trim()}>
-                    Send Question
-                  </Button>
-                </form>
-              </div>
-            )}
-          </CardContent>
-        </Card> */}
       </div>
     </div>
   )

@@ -90,5 +90,15 @@ export const EdgeFunctions = {
       problems: response.problems || [],
       message: response.message || 'PDF processed successfully'
     };
+  },
+
+  materialUpload: async (fetchWithAuth: any, pdfFile: File, data: { name: string, type: string, course_id: string }) => {
+    const formData = new FormData();
+    formData.append('pdf', pdfFile);
+    formData.append('data', JSON.stringify(data));
+    return fetchWithAuth('/functions/v1/material_upload', {
+      method: 'POST',
+      body: formData,
+    });
   }
 }; 

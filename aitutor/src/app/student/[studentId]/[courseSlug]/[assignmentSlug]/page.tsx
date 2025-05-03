@@ -1136,46 +1136,7 @@ export default function AssignmentPage() {
                           </Button>
                         </div>
                         
-                        <div className="flex justify-between items-center mt-2">
-                          <div className="flex items-center">
-                            <label htmlFor="pdf-upload" className="cursor-pointer">
-                              <div className="flex items-center text-xs text-primary hover:underline">
-                                <Paperclip className="h-3 w-3 mr-1" />
-                                Upload PDF
-                              </div>
-                              <input 
-                                id="pdf-upload"
-                                type="file"
-                                accept=".pdf"
-                                className="hidden"
-                                onChange={(e) => {
-                                  const file = e.target.files?.[0];
-                                  if (file) {
-                                    uploadAssignmentPdf(file)
-                                      .then(url => {
-                                        if (url && currentQuestion) {
-                                          toast.success("PDF uploaded successfully");
-                                        }
-                                      });
-                                  }
-                                }}
-                              />
-                            </label>
-                          </div>
-                          
-                          {pdfUrl && currentQuestion && (
-                            <Button 
-                              variant="outline" 
-                              size="sm"
-                              className="text-xs h-7"
-                              onClick={() => openDiagramSelector(currentQuestion)}
-                            >
-                              <CropIcon className="h-3 w-3 mr-1" /> 
-                              {currentQuestion.diagram ? "Change Diagram" : "Add Diagram"}
-                            </Button>
-                          )}
-                        </div>
-                        
+
                         {currentQuestion?.diagram?.imageData && (
                           <div className="mt-2 border rounded-md p-2 bg-muted/50">
                             <div className="flex justify-between items-center mb-1">
