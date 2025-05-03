@@ -15,6 +15,7 @@ import { toast } from "sonner"
 import { Course, Assignment, Material } from "@/app/educator/[educatorId]/[courseSlug]/types"
 import { generateQuestionsFromPdf, createAssignmentWithQuestions } from "../utils/questionGenerationHelpers"
 import { useAuth } from "@/contexts/auth-context"
+import ManualQuestionInput, { ManualQuestion } from "./ManualQuestionInput"
 
 interface AssignmentsTabProps {
   course: Course
@@ -54,6 +55,12 @@ export function AssignmentsTab({ course, setCourse, openProblemsDialog, openInsi
   const [generatedQuestions, setGeneratedQuestions] = useState<Array<{question: string, answer: string}>>([])
   const [showQuestionsDialog, setShowQuestionsDialog] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // State for manual questions
+  const [manualQuestions, setManualQuestions] = useState<ManualQuestion[]>([])
+
+  // Add state for input method:
+  const [questionInputMethod, setQuestionInputMethod] = useState<"manual" | "pdf">("pdf")
 
   // Format date
   const formatDate = (dateString: string) => {
@@ -159,118 +166,90 @@ export function AssignmentsTab({ course, setCourse, openProblemsDialog, openInsi
     }
   }
 
-  // Create assignment with generated questions
-  const handleCreateWithGeneratedQuestions = async () => {
-    if (!course || generatedQuestions.length === 0 || !newAssignment.name || !newAssignment.dueDate) {
-      toast.error("Please fill in all required fields and generate questions first")
-      return
-    }
-    
-    try {
-      // Use the utility function to create the assignment
-      // Note: The utility function will transform each answer into a list internally
-      const data = await createAssignmentWithQuestions(
-        course.id,
-        newAssignment.name,
-        newAssignment.dueDate,
-        newAssignment.description,
-        newAssignment.attachedMaterials,
-        generatedQuestions.map(q => q.question),
-        generatedQuestions.map(q => q.answer || ""),
-        uploadedProblemSet || undefined,
-        [],
-        fetchWithAuth
-      )
-      
-      toast.success("Assignment created with generated questions")
-      
-      // Reset state and close dialogs
-      setShowQuestionsDialog(false)
-      setAddAssignmentDialogOpen(false)
-      setGeneratedQuestions([])
-      setUploadedProblemSet(null)
-      setNewAssignment({
-        name: "",
-        description: "",
-        dueDate: "",
-        attachedMaterials: []
-      })
-      
-      // Add the returned PDF url to the new assignment in local state
-      if (data && data.url) {
-        if (course) {
+  // Add new assignment
+  const handleAddAssignment = async () => {
+    if (!course || !newAssignment.name || !newAssignment.dueDate) return;
+    if (questionInputMethod === "manual") {
+      if (manualQuestions.length === 0) {
+        toast.error("Please add at least one question.");
+        return;
+      }
+      try {
+        const data = await createAssignmentWithQuestions(
+          course.id,
+          newAssignment.name,
+          newAssignment.dueDate,
+          newAssignment.description,
+          newAssignment.attachedMaterials,
+          manualQuestions.map(q => q.question),
+          manualQuestions.map(q => q.answer || ""),
+          fetchWithAuth
+        );
+        toast.success("Assignment and questions added successfully");
+        setAddAssignmentDialogOpen(false);
+        setManualQuestions([]);
+        setNewAssignment({
+          name: "",
+          description: "",
+          dueDate: "",
+          attachedMaterials: []
+        });
+        if (data && data.assignment) {
           setCourse({
             ...course,
             assignments: [
               ...course.assignments,
-              {
-                ...data.assignment,
-                pdf_url: data.url
-              }
+              data.assignment
             ]
           });
         }
+      } catch (err: any) {
+        console.error("Error creating assignment:", err);
+        toast.error("Failed to create assignment with manual questions");
       }
-    } catch (err: any) {
-      console.error("Error creating assignment:", err)
-      toast.error(err.message || "Failed to create assignment with generated questions")
-    }
-  }
-
-  // Add new assignment
-  const handleAddAssignment = async () => {
-    if (!course || !newAssignment.name || !newAssignment.dueDate) return
-    
-    try {
-      // Insert into Supabase assignments table first
-      const { data: assignmentData, error: assignmentError } = await supabase
-        .from('assignments')
-        .insert({
-          name: newAssignment.name,
-          description: newAssignment.description,
-          due_date: newAssignment.dueDate,
-          material_ids: newAssignment.attachedMaterials
-        })
-        .select()
-
-      if (assignmentError) throw assignmentError
-
-      // Get the new assignment ID
-      const newAssignmentId = assignmentData[0].id
-      
-      // Now add an entry to the courses_assignments join table
-      const { error: joinError } = await supabase
-        .from('courses_assignments')
-        .insert({
-          course_id: course.id,
-          assignment_id: newAssignmentId
-        })
-        
-      if (joinError) throw joinError
-
-      // Update local state with the new assignment
-      const newAssignmentWithId = assignmentData[0] as Assignment
-      
-      setCourse({
-        ...course,
-        assignments: [
-          ...course.assignments,
-          newAssignmentWithId
-        ]
-      })
-      
-      toast.success("Assignment added successfully")
-    } catch (err: any) {
-      console.error("Error adding assignment:", err)
-      toast.error("Failed to add assignment")
-    } finally {
-      setNewAssignment({
-        name: "",
-        description: "",
-        dueDate: "",
-        attachedMaterials: []
-      })
-      setAddAssignmentDialogOpen(false)
+    } else if (questionInputMethod === "pdf") {
+      if (generatedQuestions.length === 0) {
+        toast.error("Please generate questions from the PDF first.");
+        return;
+      }
+      // Only pass uploadedProblemSet if it is a File, otherwise undefined
+      const pdfFile = uploadedProblemSet ? uploadedProblemSet : undefined;
+      try {
+        const data = await createAssignmentWithQuestions(
+          course.id,
+          newAssignment.name,
+          newAssignment.dueDate,
+          newAssignment.description,
+          newAssignment.attachedMaterials,
+          generatedQuestions.map(q => q.question),
+          generatedQuestions.map(q => q.answer || ""),
+          fetchWithAuth,
+          pdfFile
+        );
+        toast.success("Assignment created with generated questions");
+        setShowQuestionsDialog(false);
+        setAddAssignmentDialogOpen(false);
+        setGeneratedQuestions([]);
+        setUploadedProblemSet(null);
+        setNewAssignment({
+          name: "",
+          description: "",
+          dueDate: "",
+          attachedMaterials: []
+        });
+        if (data && data.assignment) {
+          setCourse({
+            ...course,
+            assignments: [
+              ...course.assignments,
+              data.assignment
+            ]
+          });
+        }
+      } catch (err: any) {
+        console.error("Error creating assignment:", err);
+        toast.error("Failed to create assignment with generated questions");
+      }
     }
   }
 
@@ -300,7 +279,7 @@ export function AssignmentsTab({ course, setCourse, openProblemsDialog, openInsi
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-2xl font-bold">Assignments</h2>
         <Button size="sm" onClick={() => setAddAssignmentDialogOpen(true)}>
-          <PlusCircle className="mr-2 h-4 w-4" /> Add Assignment
+          <PlusCircle className="mr-2 h-4 w-4" /> Create Assignment
         </Button>
       </div>
       
@@ -551,60 +530,85 @@ export function AssignmentsTab({ course, setCourse, openProblemsDialog, openInsi
               )}
             </div>
             
-            <div className="space-y-2 border-t pt-4">
-              <div className="flex items-center justify-between">
-                <Label>Upload Problem Set PDF</Label>
-                <div className="text-xs text-blue-500">
-                  Generate questions automatically from a PDF
-                </div>
-              </div>
-              
-              <div className="border rounded-md p-4 space-y-3">
-                <div className="flex flex-col items-center justify-center gap-2">
-                  <input 
-                    type="file" 
-                    ref={fileInputRef}
-                    id="problem-set-file" 
-                    accept=".pdf" 
-                    className="hidden"
-                    onChange={handleProblemSetUpload}
-                  />
-                  
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    className="w-full border-dashed h-20 flex flex-col gap-1"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <UploadCloud className="h-6 w-6" />
-                    <span>
-                      {uploadedProblemSet ? uploadedProblemSet.name : 'Click to upload a problem set PDF'}
-                    </span>
-                  </Button>
-                  
-                  {uploadedProblemSet && (
-                    <Button 
-                      type="button"
-                      className="mt-2"
-                      disabled={isGeneratingQuestions}
-                      onClick={handleGenerateQuestions}
-                    >
-                      {isGeneratingQuestions ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Generating...
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="mr-2 h-4 w-4" />
-                          Generate Questions
-                        </>
-                      )}
-                    </Button>
-                  )}
-                </div>
+            <div className="flex gap-4 border-t pt-4">
+              <Label className="font-semibold">How would you like to add questions?</Label>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant={questionInputMethod === "manual" ? "default" : "outline"}
+                  onClick={() => setQuestionInputMethod("manual")}
+                >
+                  Manual Entry
+                </Button>
+                <Button
+                  type="button"
+                  variant={questionInputMethod === "pdf" ? "default" : "outline"}
+                  onClick={() => setQuestionInputMethod("pdf")}
+                >
+                  Upload PDF
+                </Button>
               </div>
             </div>
+            
+            {questionInputMethod === "manual" && (
+              <div className="space-y-2 border-t pt-4">
+                <Label>Manually Add Questions & Answers</Label>
+                <ManualQuestionInput questions={manualQuestions} setQuestions={setManualQuestions} />
+              </div>
+            )}
+            {questionInputMethod === "pdf" && (
+              <div className="space-y-2 border-t pt-4">
+                <div className="flex items-center justify-between">
+                  <Label>Upload Problem Set PDF</Label>
+                  <div className="text-xs text-blue-500">
+                    Generate questions automatically from a PDF
+                  </div>
+                </div>
+                <div className="border rounded-md p-4 space-y-3">
+                  <div className="flex flex-col items-center justify-center gap-2">
+                    <input 
+                      type="file" 
+                      ref={fileInputRef}
+                      id="problem-set-file" 
+                      accept=".pdf" 
+                      className="hidden"
+                      onChange={handleProblemSetUpload}
+                    />
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      className="w-full border-dashed h-20 flex flex-col gap-1"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <UploadCloud className="h-6 w-6" />
+                      <span>
+                        {uploadedProblemSet ? uploadedProblemSet.name : 'Click to upload a problem set PDF'}
+                      </span>
+                    </Button>
+                    {uploadedProblemSet && (
+                      <Button 
+                        type="button"
+                        className="mt-2"
+                        disabled={isGeneratingQuestions}
+                        onClick={handleGenerateQuestions}
+                      >
+                        {isGeneratingQuestions ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Generating...
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="mr-2 h-4 w-4" />
+                            Generate Questions
+                          </>
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
           
           <DialogFooter>
@@ -684,7 +688,7 @@ export function AssignmentsTab({ course, setCourse, openProblemsDialog, openInsi
               </Button>
               <Button 
                 type="button" 
-                onClick={handleCreateWithGeneratedQuestions}
+                onClick={handleAddAssignment}
                 disabled={generatedQuestions.length === 0 || !newAssignment.name || !newAssignment.dueDate}
               >
                 <Sparkles className="mr-2 h-4 w-4" />

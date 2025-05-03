@@ -39,9 +39,9 @@ export async function generateQuestionsFromPdf(file: File, fetchWithAuth: any) {
  * @param materialIds Array of material IDs to attach
  * @param problems Array of problem questions
  * @param answers Array of answers corresponding to the problems (each answer will be transformed to a list)
+ * @param fetchWithAuth The authenticated fetch function from useAuth
  * @param pdfFile Optional PDF file of the problem set to upload
  * @param imageUrls Optional array of image URLs for each problem
- * @param fetchWithAuth The authenticated fetch function from useAuth
  * @returns The created assignment data
  */
 export async function createAssignmentWithQuestions(
@@ -52,9 +52,9 @@ export async function createAssignmentWithQuestions(
   materialIds: string[],
   problems: string[],
   answers: string[],
+  fetchWithAuth: any,
   pdfFile?: File,
-  imageUrls: string[] = [],
-  fetchWithAuth: any
+  imageUrls: string[] = []
 ) {
   // Transform answers into a list of lists (each answer becomes a single-item list)
   const transformedAnswers = answers.map(answer => [answer]);
