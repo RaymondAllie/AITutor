@@ -57,6 +57,11 @@ import { ReactCrop, type Crop } from 'react-image-crop'
 import 'react-image-crop/dist/ReactCrop.css'
 import { toast } from "sonner"
 import { useAuth } from "@/contexts/auth-context"
+// @ts-ignore
+import ReactMarkdown from 'react-markdown'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css'
 
 
 // Configure PDF.js worker
@@ -1104,8 +1109,9 @@ export default function AssignmentPage() {
                                       : 'bg-muted border border-border'
                                 }`}
                               >
-                                <div className="whitespace-pre-wrap">{message.content}</div>
-                        
+                                <div className="whitespace-pre-wrap">
+                                  <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>{message.content}</ReactMarkdown>
+                                </div>
                               </div>
                             </div>
                           </div>

@@ -1,8 +1,0 @@
-{
-  "dependencies": {
-    "react-pdf": "^9.2.1"
-  },
-  "devDependencies": {
-    "@types/react-pdf": "^7.0.0"
-  }
-}
