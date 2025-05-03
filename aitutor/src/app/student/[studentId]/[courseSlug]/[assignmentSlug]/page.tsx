@@ -91,6 +91,7 @@ interface Question {
     imageData?: string;
     url?: string;
   };
+  image_url?: string;
 }
 
 interface Material {
@@ -295,7 +296,8 @@ export default function AssignmentPage() {
               question: problem.question,
               hint: problem.hint || "No hint available for this question.",
               assignment_id: assignmentData.id,
-              completed: isCompleted
+              completed: isCompleted,
+              image_url: problem.image_url
             };
           });
           
@@ -1023,6 +1025,8 @@ export default function AssignmentPage() {
     }
   };
   
+  console.log('currentQuestion', currentQuestion);
+
   return (
     <SidebarProvider defaultOpen={true}>
       <div className="flex h-screen">
@@ -1141,30 +1145,7 @@ export default function AssignmentPage() {
                             <Send className="h-4 w-4" />
                           </Button>
                         </div>
-                        
 
-                        {currentQuestion?.diagram?.imageData && (
-                          <div className="mt-2 border rounded-md p-2 bg-muted/50">
-                            <div className="flex justify-between items-center mb-1">
-                              <span className="text-xs font-medium">Associated Diagram</span>
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="h-6 text-xs"
-                                onClick={() => openDiagramSelector(currentQuestion)}
-                              >
-                                Change
-                              </Button>
-                            </div>
-                            <div className="flex justify-center">
-                              <img 
-                                src={currentQuestion.diagram.imageData} 
-                                alt="Question Diagram" 
-                                className="max-h-40 object-contain" 
-                              />
-                            </div>
-                          </div>
-                        )}
                       </form>
                     </div>
                   </CardContent>
@@ -1226,6 +1207,16 @@ export default function AssignmentPage() {
                     </div>
                   </CardHeader>
                   <CardContent className="p-0">
+                    {currentQuestion?.image_url && (
+                      <div className="flex flex-col items-center px-4">
+                        <span className="text-xs font-medium mb-1">Associated Diagram</span>
+                        <img
+                          src={currentQuestion.image_url}
+                          alt="Question Diagram"
+                          className="max-h-48 max-w-full border rounded mb-2 object-contain"
+                        />
+                      </div>
+                    )}
                     {selectedMaterials.length > 0 ? (
                       <PDFViewer 
                         tabs={selectedMaterials.map(material => ({
