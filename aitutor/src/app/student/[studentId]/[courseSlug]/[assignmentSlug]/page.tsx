@@ -263,6 +263,13 @@ export default function AssignmentPage() {
             
           if (problemsError) throw problemsError;
           
+          // Sort problems by index (ascending), missing index goes to end
+          const sortedProblems = (problemsData || []).slice().sort((a, b) => {
+            const aIndex = typeof a.index === 'number' ? a.index : Infinity;
+            const bIndex = typeof b.index === 'number' ? b.index : Infinity;
+            return aIndex - bIndex;
+          });
+          
           // 6. Get student's progress for these questions
           // Instead of querying the database directly, use the getprogress Edge Function
           const { data: { session } } = await supabase.auth.getSession()
@@ -281,9 +288,8 @@ export default function AssignmentPage() {
           const completedProblemIds = progressResult.completed || [];
           
           // Map questions with completed status
-          questions = (problemsData || []).map(problem => {
+          questions = sortedProblems.map(problem => {
             const isCompleted = completedProblemIds.includes(problem.id);
-            
             return {
               id: problem.id,
               question: problem.question,
