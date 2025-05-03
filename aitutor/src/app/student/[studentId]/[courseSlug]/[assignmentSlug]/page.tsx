@@ -218,8 +218,7 @@ export default function AssignmentPage() {
         const { data: assignmentData, error: assignmentError } = await supabase
           .from('assignments')
           .select('*')
-          .ilike('name', formattedAssignmentSlug)
-          .in('id', assignmentIds)
+          .eq('id', assignmentSlug)
           .single();
           
         if (assignmentError) {

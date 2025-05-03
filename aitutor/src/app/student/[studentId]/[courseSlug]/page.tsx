@@ -438,7 +438,7 @@ export default function StudentCoursePage() {
                         variant={assignment.status === "completed" ? "outline" : "default"}
                         asChild
                       >
-                        <Link href={`/student/${studentId}/${courseSlug}/${assignment.name.toLowerCase().replace(/\s+/g, '-')}`}>
+                        <Link href={`/student/${studentId}/${courseSlug}/${assignment.id}`}>
                           {assignment.status === "completed" 
                             ? "Review Assignment" 
                             : assignment.status === "pending" 
@@ -492,7 +492,7 @@ export default function StudentCoursePage() {
                             variant="outline"
                             asChild
                           >
-                            <Link href={`/student/${studentId}/${courseSlug}/${assignment.name.toLowerCase().replace(/\s+/g, '-')}`}>
+                            <Link href={`/student/${studentId}/${courseSlug}/${assignment.id}`}>
                               Review Assignment
                             </Link>
                           </Button>
@@ -546,7 +546,7 @@ export default function StudentCoursePage() {
                             className="text-xs py-1 h-8 px-3"
                             asChild
                           >
-                            <Link href={`/student/${studentId}/${courseSlug}/${assignment.name.toLowerCase().replace(/\s+/g, '-')}`}>
+                            <Link href={`/student/${studentId}/${courseSlug}/${assignment.id}`}>
                               {assignment.status === "pending" ? "Continue Assignment" : "Start Assignment"}
                             </Link>
                           </Button>
