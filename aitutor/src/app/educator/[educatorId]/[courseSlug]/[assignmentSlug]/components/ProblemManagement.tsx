@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { PlusCircle, MessageCircle, Image, Edit, Trash2 } from "lucide-react";
+import { PlusCircle, MessageCircle, Image, Edit, Trash2, XCircle } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { callEdgeFunction } from "@/lib/edge-functions";
 
@@ -163,6 +163,38 @@ const ProblemManagement: React.FC<ProblemManagementProps> = ({
     }
   };
 
+  // Remove diagram from a problem
+  const handleRemoveDiagram = async (problemId: string) => {
+    try {
+      // Call the remove_image edge function
+      const response = await callEdgeFunction(
+        fetchWithAuth,
+        "remove_image",
+        { id: problemId }
+      );
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to remove image');
+      }
+      // Remove image_url from the problem in local state
+      setProblems(problems.map(problem =>
+        problem.id === problemId
+          ? { ...problem, image_url: undefined }
+          : problem
+      ));
+      toast.success("Diagram removed successfully");
+    } catch (err: any) {
+      console.error("Error removing diagram:", err);
+      toast.error(err.message || "Failed to remove diagram");
+    }
+  };
+
+  // Sort problems by index
+  const sortedProblems = [...problems].sort((a, b) => {
+    const indexA = a.index !== undefined ? a.index : Number.MAX_SAFE_INTEGER;
+    const indexB = b.index !== undefined ? b.index : Number.MAX_SAFE_INTEGER;
+    return indexA - indexB;
+  });
+
   return (
     <>
       <div className="border-t pt-6 mt-6">
@@ -189,19 +221,29 @@ const ProblemManagement: React.FC<ProblemManagementProps> = ({
           </div>
         ) : (
           <div className="space-y-4">
-            {problems.map((problem, index) => (
+            {sortedProblems.map((problem, index) => (
               <Card key={problem.id} className="overflow-hidden">
                 <CardHeader className="pb-2">
                   <div className="flex justify-between items-start">
                     <CardTitle className="text-lg">Problem {index + 1}</CardTitle>
                     <div className="flex space-x-2">
-                      <Button 
-                        variant="ghost" 
-                        size="sm"
-                        onClick={() => onSelectDiagram(problem.id)}
-                      >
-                        <Image className="h-4 w-4 mr-1" /> Select Diagram
-                      </Button>
+                      {problem.image_url ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleRemoveDiagram(problem.id)}
+                        >
+                          <XCircle className="h-4 w-4 mr-1 text-red-500" /> Remove Diagram
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => onSelectDiagram(problem.id)}
+                        >
+                          <Image className="h-4 w-4 mr-1" /> Select Diagram
+                        </Button>
+                      )}
                       <Button 
                         variant="ghost" 
                         size="sm"

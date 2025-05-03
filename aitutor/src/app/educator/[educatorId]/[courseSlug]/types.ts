@@ -17,6 +17,8 @@ export interface Problem {
     imageData?: string
     image_url?: string
   }
+  image_url?: string
+  index?: number
 }
 
 export interface Assignment {
